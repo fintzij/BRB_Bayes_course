@@ -33,6 +33,6 @@ Recommended books:
 
 Additional resources:
 - [Stan forums](https://discourse.mc-stan.org/): get help from the pros, when I have a question someone else has usually asked it first.
-- [Stan documentation](ttps://mc-stan.org/users/documentation/): fantastic resource for all things Stan programming.
+- [Stan documentation](https://mc-stan.org/users/documentation/): fantastic resource for all things Stan programming.
 - [Data methods discourse](https://discourse.datamethods.org/): thoughtful discourse on stats done right.
 - [Aki Vehtari's Bayes course](https://github.com/avehtari/BDA_course_Aalto): deeper, more mathematical presentation of what we'll cover. We'll borrow from this course as well.  
