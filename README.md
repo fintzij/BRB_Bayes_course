@@ -13,7 +13,7 @@ This repository collects supplementary materials for an applied course covering 
 - Bayesian workflow,
 - Markov chain Monte Carlo.
 
-The material presented in this course will largely derive from the Winter 2019 lectures by Richard McElreath (https://github.com/rmcelreath/statrethinking_winter2019). In broad strokes, the plan will be for participants in our class to watch two lectures per week, though at various points we may skip a few lectures or go through McElreath's course in a slightly different order. When we meet, we will review the main concepts covered in the online lectures and supplement the material with either worked examples, case studies, and additional mathematical/statistical details. Outlines of the material from our course will be posted in this repository along with links to references and additional readings.  
+The material presented in this course will largely track with the Winter 2019 lectures by Richard McElreath (https://github.com/rmcelreath/statrethinking_winter2019). In broad strokes, the plan will be for participants in our class to watch two lectures per week, though at various points we may skip a few lectures or go through McElreath's course in a slightly different order. When we meet, we will review the main concepts covered in the online lectures and supplement the material with either worked examples, case studies, and additional mathematical/statistical details. Outlines of the material from our course will be posted in this repository along with links to references and additional readings.  
 
 ## Materials 
 
