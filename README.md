@@ -26,9 +26,10 @@ We will fit models using Stan, which provides a state of the art platform for Ba
 ## Additional References
 
 Recommended books:
-- Robert, Christian. The Bayesian choice: from decision-theoretic foundations to computational implementation. Springer Science & Business Media, 2007.
-- Gelman, Andrew, et al. Bayesian data analysis. Chapman and Hall/CRC, 2013.
-- Hoff, Peter D. A first course in Bayesian statistical methods. Vol. 580. New York: Springer, 2009.
+- Robert, Christian. The Bayesian Choice: From Decision-Theoretic Foundations to Computational Implementation. Springer Science & Business Media, 2007.
+- Gelman, Andrew, et al. Bayesian Data Analysis. Chapman and Hall/CRC, 2013.
+- Hoff, Peter D. A First Course in Bayesian Statistical Methods. Vol. 580. New York: Springer, 2009.
+- Brooks, Steve, et al., eds. Handbook of Markov Chain Monte Carlo. CRC Press, 2011.
 
 Additional resources:
 - [Stan forums](https://discourse.mc-stan.org/): get help from the pros, when I have a question someone else has usually asked it first.
