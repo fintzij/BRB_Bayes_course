@@ -1,0 +1,994 @@
+\documentclass[13pt,ignorenonframetext,aspectratio = 1610]{beamer}
+\setbeamertemplate{caption}[numbered]
+\setbeamertemplate{caption label separator}{: }
+\setbeamercolor{caption name}{fg=normal text.fg}
+\beamertemplatenavigationsymbolsempty
+\usepackage{lmodern}
+\usepackage{amssymb,amsmath}
+% packages
+\usepackage{amsfonts, algorithm, algpseudocode, dsfont,
+	pgfplots, tikz, tikzscale, ulem, xcolor}
+\usetikzlibrary{arrows,shapes,positioning,external}
+\pgfplotsset{compat=1.15}
+
+\usepackage{ifxetex,ifluatex}
+\usepackage{fixltx2e} % provides \textsubscript
+\ifnum 0\ifxetex 1\fi\ifluatex 1\fi=0 % if pdftex
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+\else % if luatex or xelatex
+  \ifxetex
+    \usepackage{mathspec}
+  \else
+    \usepackage{fontspec}
+  \fi
+  \defaultfontfeatures{Ligatures=TeX,Scale=MatchLowercase}
+    \setmainfont[]{Roboto Light}
+    \setmonofont[Mapping=tex-ansi]{Roboto Mono}
+\fi
+\usefonttheme{serif} % use mainfont rather than sansfont for slide text
+% use upquote if available, for straight quotes in verbatim environments
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+% use microtype if available
+\IfFileExists{microtype.sty}{%
+\usepackage{microtype}
+\UseMicrotypeSet[protrusion]{basicmath} % disable protrusion for tt fonts
+}{}
+\newif\ifbibliography
+\hypersetup{
+            pdftitle={Essentials of Bayesian Modeling},
+            pdfauthor={Jon Fintzi},
+            pdfborder={0 0 0},
+            breaklinks=true}
+%\urlstyle{same}  % Use monospace font for urls
+\usepackage{graphicx,grffile}
+\makeatletter
+\def\maxwidth{\ifdim\Gin@nat@width>\linewidth\linewidth\else\Gin@nat@width\fi}
+\def\maxheight{\ifdim\Gin@nat@height>\textheight0.8\textheight\else\Gin@nat@height\fi}
+\makeatother
+% Scale images if necessary, so that they will not overflow the page
+% margins by default, and it is still possible to overwrite the defaults
+% using explicit options in \includegraphics[width, height, ...]{}
+\setkeys{Gin}{width=\maxwidth,height=\maxheight,keepaspectratio}
+
+% Prevent slide breaks in the middle of a paragraph:
+\widowpenalties 1 10000
+\raggedbottom
+
+\AtBeginPart{
+  \let\insertpartnumber\relax
+  \let\partname\relax
+  \frame{\partpage}
+}
+\AtBeginSection{
+  \ifbibliography
+  \else
+    \let\insertsectionnumber\relax
+    \let\sectionname\relax
+    \frame{\sectionpage}
+  \fi
+}
+\AtBeginSubsection{
+  \let\insertsubsectionnumber\relax
+  \let\subsectionname\relax
+  \frame{\subsectionpage}
+}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt plus 2pt minus 1pt}
+\setlength{\emergencystretch}{3em}  % prevent overfull lines
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+\setcounter{secnumdepth}{0}
+
+
+\title[Essentials of Bayesian Modeling]{Essentials of Bayesian Modeling}
+\subtitle{Course overview and introduction to Bayesian statistics}
+\author[
+Jon Fintzi
+]{Jon Fintzi}
+\institute[
+Biostatistics Research Branch
+]{
+Biostatistics Research Branch \\
+National Institute of Allergy and Infectious Diseases\\
+National Institutes of Health
+}
+\date[
+08/12/19
+]{
+August 12, 2019
+}
+
+% ------------------------------------------------------------------------------------------------
+% BELOW ARE MY ADDITIONS
+% ------------------------------------------------------------------------------------------------
+
+% ------------------------------------------------------------------------------------------------
+% CUSTOM COMMANDS
+% ------------------------------------------------------------------------------------------------
+\newcommand{\Var}{\mathrm{Var}}
+\newcommand{\E}{\mathrm{E}}
+\newcommand{\mr}[1]{\mathrm{#1}}
+\newcommand{\mb}[1]{\mathbf{#1}}
+\newcommand{\mi}[1]{\mathit{#1}}
+\newcommand{\bs}[1]{\boldsymbol{#1}}
+\newcommand{\rmd}{\mr{d}}
+\newcommand{\ind}[1]{\mathds{1}_{\left \lbrace#1\right \rbrace}}
+\newcommand{\deriv}[2]{\frac{\rmd#1}{\rmd#2}}
+\newcommand{\pdiv}[2]{\frac{\partial#1}{\partial#2}}
+\newcommand{\diag}{\mr{diag}}
+\newcommand{\wtil}[1]{\widetilde{#1}}
+\newcommand{\what}[1]{\widehat{#1}}
+
+% ------------------------------------------------------------------------------------------------
+%	PACKAGE LIST
+% ------------------------------------------------------------------------------------------------
+\usepackage{
+booktabs,
+%fontspec,
+graphicx,
+multicol,
+pgfplots,
+ragged2e,
+tabularx,
+wasysym,
+hyperref,
+hanging,
+multirow,
+eso-pic,
+}
+
+\usepackage[export]{adjustbox}
+% ------------------------------------------------------------------------------------------------
+%	GRAPHICS PATH
+% ------------------------------------------------------------------------------------------------
+\graphicspath{{./figs/}}
+
+
+% ------------------------------------------------------------------------------------------------
+%	TABLE OF CONTENTS
+% ------------------------------------------------------------------------------------------------
+\useoutertheme[subsection=false,shadow]{miniframes}
+\setbeamertemplate{section in toc}[sections numbered]
+\setbeamertemplate{subsection in toc}[subsections numbered]
+
+% ------------------------------------------------------------------------------------------------
+%	ITEMIZE
+% ------------------------------------------------------------------------------------------------
+\setbeamertemplate{itemize item}{$\bullet$}
+\setbeamertemplate{itemize subitem}{$\circ$}
+\setbeamertemplate{itemize subsubitem}{$\bullet$}
+
+\setlength{\parskip}{0.5em}
+
+% ------------------------------------------------------------------------------------------------
+%	COLORS
+% ------------------------------------------------------------------------------------------------
+
+% sthlm Colors
+\definecolor{sthlmLightBlue}{RGB}{0,91,150}
+\definecolor{sthlmBlue}{RGB}{3,57,108}
+\definecolor{sthlmDarkBlue}{RGB}{1,31,75}
+\definecolor{sthlmLightRed}{RGB}{143,39,39}
+\definecolor{sthlmRed}{RGB}{124,0,0}
+\definecolor{sthlmLightYellow}{RGB}{255,204,0}
+\definecolor{sthlmYellow}{RGB}{255,149,0}
+\definecolor{sthlmPurple}{RGB}{64,0,64}
+\definecolor{sthlmGreen}{RGB}{25,77,51}
+\definecolor{sthlmGrey}{RGB}{142,142,147}
+\definecolor{sthlmLightGrey}{RGB}{233,233,233}
+\definecolor{sthlmDarkGrey}{RGB}{61,61,70}
+
+% General
+\setbeamercolor{normal text}{fg=sthlmDarkGrey}
+\hypersetup{colorlinks=true, urlcolor=sthlmDarkBlue, linkcolor=sthlmDarkGrey, citecolor=sthlmDarkBlue}
+\setbeamercolor{structure}{fg=sthlmDarkGrey}
+\setbeamercolor{alerted text}{fg=sthlmRed}
+\setbeamercolor{example text}{fg=white}
+\setbeamercolor{copyright text}{fg=sthlmLightBlue}
+\setbeamercolor{palette primary}{fg=sthlmDarkGrey}
+\setbeamercolor{palette secondary}{fg=sthlmDarkGrey,bg=sthlmLightGrey}
+\setbeamercolor{palette tertiary}{fg=black,bg=sthlmDarkGrey}
+\setbeamercolor{palette quaternary}{fg=white, bg=sthlmDarkGrey}
+
+\setbeamercolor{mini frame}{bg=sthlmLightGrey}
+\setbeamercolor{section in head/foot}{fg=sthlmDarkGrey, bg=sthlmLightGrey}
+
+% Titlepage
+\setbeamercolor{title}{parent=normal text}
+\setbeamercolor{subtitle}{parent=normal text}
+\setbeamercolor{institute}{parent=normal text}
+
+% Content
+\setbeamercolor{frametitle}{parent=palette quaternary}
+
+% Blocks
+\setbeamercolor{block title}{fg=white,bg=sthlmBlue}
+\setbeamercolor{block body}{fg=sthlmDarkGrey, bg=sthlmLightGrey}
+\setbeamercolor{block title example}{fg=white, bg=sthlmGreen}
+\setbeamercolor{block body example}{fg=sthlmDarkGrey, bg=sthlmLightGrey}
+\setbeamercolor{block title alerted}{fg=white, bg=sthlmLightRed}
+\setbeamercolor{block body alerted}{fg=sthlmDarkGrey, bg=sthlmLightGrey}
+
+% Notes
+\setbeamercolor{note page}{fg=sthlmDarkGrey,bg=sthlmLightGrey}
+\setbeamercolor{note title}{fg=white, bg=sthlmDarkGrey}
+\setbeamercolor{note date}{parent=note title}
+
+% Page Number
+\setbeamercolor{page number in head/foot}{fg=sthlmDarkGrey}
+
+\setbeamercolor{qed}{fg=sthlmGrey}
+\setbeamercolor{itemize item}{fg=sthlmDarkBlue}
+\setbeamercolor{itemize subitem}{fg=sthlmDarkBlue}
+\setbeamercolor{itemize subsubitem}{fg=sthlmDarkBlue}
+
+% ------------------------------------------------------------------------------------------------
+%	FONTS
+% ------------------------------------------------------------------------------------------------
+
+% General
+
+%% Declare fontfamilys
+%\if@doNoFlama%
+%	% Sans serif math option
+%	\if@doSans%
+%	% Sans serif math
+%		\usepackage{fontspec}%
+%		\setmainfont{Arial Regular}%
+%	\else%
+%		% Serif math
+%		\usefonttheme{professionalfonts}%
+%		\usepackage[no-math]{fontspec}%
+%	\fi%
+%	
+%	\newfontfamily\Light{Arial Regular}%
+%	\newfontfamily\Book{Arial Black Regular}%
+%	\newfontfamily\bfseries{Arial Bold}%
+%	\setsansfont{Arial Regular}%
+%\else%
+%	% Sans serif math option
+%	\if@doSans%
+%	% Sans serif math
+%		\usepackage{fontspec}%
+%		\setmainfont{FlamaLight}%
+%	\else%
+%		% Serif math
+%		\usefonttheme{professionalfonts}%
+%		\usepackage[no-math]{fontspec}%
+%	\fi%
+%	
+%	\newfontfamily\Light{FlamaLight}%
+%	\newfontfamily\Book{FlamaBook}%
+%	\newfontfamily\bfseries{FlamaMedium}%
+%	\setsansfont{FlamaLight}%
+%	%\newfontfamily\texttt{SourceCodePro-Light}
+%\fi%
+%
+%%\renewcommand\UrlFont{\texttt}
+%
+%% Font sizes
+%
+%% Titlepage
+%\setbeamerfont{title}{family=\bfseries,size=\fontsize{24}{26}}
+%\setbeamerfont{subtitle}{family=\Light,size=\fontsize{14}{18}}
+%\setbeamerfont{subtitle}{size=\fontsize{14}{18}}
+%\setbeamerfont{date}{size=\fontsize{9}{11}}
+%\setbeamerfont{author}{family=\bfseries,size=\fontsize{13}{15}}
+%\setbeamerfont{institute}{size=\fontsize{09}{10}}
+%
+%% Section
+%\setbeamerfont{section title}{size*={39pt}{24pt}, family = \bfseries, series=\bfseries}% Content
+%\setbeamerfont{frametitle}{family=\bfseries,size=\large}
+%\setbeamerfont{copyright text}{family=\Light,size=\tiny}
+%\setbeamerfont{block title}{family=\Book,size=\large}
+%\setbeamerfont{block title alerted}{family=\Book,size=\large}
+%\setbeamerfont{alerted text}{family=\bfseries}
+%
+%%Captions
+%\setbeamerfont{caption name}{family=\Book}
+
+
+
+
+%% ------------------------------------------------------------------------------------------------
+%%	FONT ASSIGMENTS
+%% ------------------------------------------------------------------------------------------------
+%% Title Page
+%\newfontfamily\Light{Roboto Light}
+%\setbeamerfont{title}{size=\LARGE, series=\bfseries}
+%\setbeamerfont{subtitle}{family=\Light, size=\small, shape=\normalfont}
+%\setbeamerfont{date}{family=\Light, size=\footnotesize}
+%\setbeamerfont{author}{size=\small, series=\bfseries}
+%\setbeamerfont{institute}{family=\Light, size=\scriptsize}
+%
+%% Section
+%\setbeamerfont{section title}{size=\Huge}
+%
+%% Content
+%\setbeamerfont{frametitle}{size=\Large, series=\bfseries}
+%\setbeamerfont{copyright text}{size=\tiny}
+%\setbeamerfont{block title}{size=\large, series=\bfseries}
+%\setbeamerfont{block title alerted}{size=\large, series=\bfseries}
+%\setbeamerfont{block title example}{size=\large, series=\bfseries}
+%
+%\setbeamerfont{caption}{size=\small}
+%\setbeamerfont{caption name}{family=\small}
+
+% ------------------------------------------------------------------------------------------------
+%	FONT ASSIGMENTS
+% ------------------------------------------------------------------------------------------------
+% Title Page
+%\newfontfamily\Light{Roboto Light}
+\setbeamerfont{title}{size=\LARGE, series=\bfseries}
+\setbeamerfont{subtitle}{size=\normalsize, shape=\normalfont}
+\setbeamerfont{date}{size=\normalsize}
+\setbeamerfont{author}{size=\normalsize, series=\bfseries}
+\setbeamerfont{institute}{size=\small}
+
+% Section
+\setbeamerfont{section title}{size=\Huge}
+
+% Content
+\setbeamerfont{frametitle}{size=\Large, series=\bfseries}
+\setbeamerfont{copyright text}{size=\tiny}
+\setbeamerfont{block title}{size=\large, series=\bfseries}
+\setbeamerfont{block title alerted}{size=\large, series=\bfseries}
+\setbeamerfont{block title example}{size=\large, series=\bfseries}
+
+\setbeamerfont{caption}{size=\small}
+\setbeamerfont{caption name}{family=\small}
+
+% ------------------------------------------------------------------------------------------------
+%	TITLE PAGE
+% ------------------------------------------------------------------------------------------------
+
+\newcommand\AtPageUpperRight[1]{\AtPageUpperLeft{%
+ \put(\LenToUnit{\paperwidth},\LenToUnit{0\paperheight}){#1}%
+ }}%
+\newcommand\AtPageLowerRight[1]{\AtPageLowerLeft{%
+ \put(\LenToUnit{\paperwidth},\LenToUnit{0\paperheight}){#1}%
+ }}%
+
+%\AddToShipoutPictureBG*{% Add picture to current page
+%  \AtStockLowerLeft{% Add picture to lower-left corner of paper stock
+%    \includegraphics[width=\stockwidth,height=\stockheight]{tiger}}% http://latex.tug.org/texlive/devsrc/Master/texmf-dist/doc/generic/pstricks/images/tiger.eps
+%}
+
+% Titlepage structure
+\def\maketitle{\ifbeamer@inframe\titlepage\else\frame[plain]{\titlepage}\fi}
+\def\titlepage{\usebeamertemplate{title page}}
+\setbeamertemplate{title page}
+%\frame[plain]{\titlepage}
+{
+	% Add background to title page
+  	%\AddToShipoutPictureFG*{\includegraphics[width=\paperwidth]{backgroundiegs.pdf}}
+	%\AddToShipoutPictureFG*{
+	%	\AtPageLowerRight{\put(-95, 0){
+	%		\includegraphics[width=.2\paperwidth]{title_graphic.pdf}}}}
+	%\AddToShipoutPictureFG*{\includegraphics[width=\paperwidth]{youngmetro_logo.png}}
+	\begin{minipage}[b][\paperheight]{\textwidth}
+	%\vspace*{5mm}
+	%\includegraphics[height=14mm]{./logo}\par
+	\vspace*{20mm}
+	\ifx\insertsubtitle\@empty%
+	\else%
+		{\usebeamerfont{title}\usebeamercolor[fg]{title}\MakeUppercase{\inserttitle}\parskip0pt\par}%
+	\fi%
+	\ifx\insertsubtitle\@empty%
+	\else%
+		{\usebeamerfont{subtitle}\usebeamercolor[fg]{subtitle}\insertsubtitle\par}%
+		\vspace*{5mm}
+	\fi%
+	\ifx\insertdate\@empty%
+	\else%
+		{\usebeamerfont{date}\usebeamercolor[fg]{date}\insertdate\par}%
+	\fi% 
+	
+	\vfill
+	
+	\ifx\insertauthor\@empty%
+	\else%
+		{\usebeamerfont{author}\usebeamercolor[fg]{author}\insertauthor\par}%
+	\fi%
+	\ifx\insertinstitut\@empty%
+	\else%
+		\vspace*{1mm}
+		{\usebeamerfont{institute}\usebeamercolor[sthlmDarkGrey]{institute}\insertinstitute\par}%
+	\fi% 
+	\vspace*{5mm}
+	\end{minipage}
+}
+
+% ------------------------------------------------------------------------------------------------
+%	SECTION PAGES
+% ------------------------------------------------------------------------------------------------
+
+% Make Sectionhead uppercase
+\newcommand{\insertsectionHEAD}{%
+	\expandafter\insertsectionHEADaux\insertsectionhead}
+	\newcommand{\insertsectionHEADaux}[3]{\MakeUppercase{#3}
+}
+
+\if@doSectionPage\@empty
+\else
+% Insert frame with section title at every section start
+\AtBeginSection[]
+{
+\begingroup
+\setbeamercolor{background canvas}{bg=sthlmDarkGrey}
+\begin{frame}[plain]
+\centering
+\vfill\usebeamerfont{section title}\textcolor{white}{\insertsectionHEAD}\vfill
+\end{frame}
+\endgroup
+}
+\fi
+
+% ------------------------------------------------------------------------------------------------
+%	HEADLINE
+% ------------------------------------------------------------------------------------------------
+\makeatletter
+\def\progressbar@progressbar{} % the progress bar
+\newcount\progressbar@tmpcounta% auxiliary counter
+\newcount\progressbar@tmpcountb% auxiliary counter
+\newdimen\progressbar@pbht %progressbar height
+\newdimen\progressbar@pbwd %progressbar width
+\newdimen\progressbar@tmpdim % auxiliary dimension
+
+\progressbar@pbwd=\paperwidth
+\progressbar@pbht=1.25ex
+
+% the progress bar
+\def\progressbar@progressbar{%
+    \progressbar@tmpcounta=\insertframenumber
+    \progressbar@tmpcountb=\inserttotalframenumber
+    \progressbar@tmpdim=\progressbar@pbwd
+%    \divide\progressbar@tmpdim by 100
+%    \multiply\progressbar@tmpdim by \progressbar@tmpcounta
+%    \divide\progressbar@tmpdim by \progressbar@tmpcountb
+%    \multiply\progressbar@tmpdim by 100
+  \begin{tikzpicture}[very thin]
+
+    \shade[top color=sthlmLightGrey,bottom color=sthlmLightGrey,middle color=sthlmLightGrey]
+      (0pt, 0pt) rectangle ++ (\progressbar@pbwd, \progressbar@pbht);
+
+      \shade[draw=sthlmDarkBlue,top color=sthlmDarkBlue,bottom color=sthlmDarkBlue,middle color=sthlmDarkBlue] %
+        (0pt, 0pt) rectangle ++ (\progressbar@tmpdim, \progressbar@pbht);
+
+  \end{tikzpicture}%
+}
+
+\setbeamertemplate{headline}{
+
+  \begin{beamercolorbox}[wd=\paperwidth,ht=1ex,center,dp=0ex]{sthlmLightGrey}%
+    \progressbar@progressbar%
+  \end{beamercolorbox}%
+}
+
+%% ------------------------------------------------------------------------------------------------
+%%	FRAME TITLE IN ALL CAPS (MAC: USE "? + ? + }" to uncomment section
+%% ------------------------------------------------------------------------------------------------
+%\setbeamertemplate{frametitle}
+%{
+%\begin{beamercolorbox}[wd=\paperwidth,leftskip=0.3cm,rightskip=0.3cm,ht=3ex,dp=1.5ex]{frametitle}
+%	 \usebeamerfont{frametitle}\MakeUppercase{\insertframetitle}%
+%\end{beamercolorbox}
+%}
+
+% ------------------------------------------------------------------------------------------------
+%	FRAME TITLE IN TITLE CASE (MAC: USE "? + ? + {" to comment-out section
+% ------------------------------------------------------------------------------------------------
+\setbeamertemplate{frametitle}
+{
+\begin{beamercolorbox}[sep=0ex,wd=\paperwidth,leftskip=0.25cm,rightskip=0.3cm,ht=2.75ex,dp=1.375ex]{frametitle}
+	 \usebeamerfont*{frametitle}{\insertframetitle}%
+\end{beamercolorbox}
+}
+
+
+%\setbeamertemplate{block alerted begin}
+%{
+%  \setbeamercolor{item}{parent=block body alerted}
+%  \par\vskip\medskipamount%
+%  \begin{beamercolorbox}[sep=.5ex,dp=0.6ex,leftskip=0.5ex,rightskip=0.5ex]{block title alerted}
+%    \usebeamerfont*{block title alerted}\insertblocktitle%
+%  \end{beamercolorbox}%
+%  {\parskip0pt\par}%
+%  {\nointerlineskip\vskip-0.5pt}%
+%  \usebeamerfont{block body alerted}%
+%  \begin{beamercolorbox}[sep=.5ex,dp=0.6ex,leftskip=0.5ex,rightskip=0.5ex,vmode]{block body alerted}%
+%}
+%\setbeamertemplate{block alerted end}
+%{\end{beamercolorbox}\vskip\smallskipamount}
+
+% ------------------------------------------------------------------------------------------------
+%	FOOTLINE
+% ------------------------------------------------------------------------------------------------
+\usenavigationsymbolstemplate{}
+\setbeamertemplate{footline}
+{
+  \leavevmode%
+  \hbox{%
+  \begin{beamercolorbox}[sep=0.25ex,wd=.333333\paperwidth,ht=3.25ex,dp=1.25ex,left]{author in head/foot}%
+    \usebeamerfont{author in head/foot}\insertshortauthor\expandafter\beamer@ifempty\expandafter{\beamer@shortinstitute}{}{~~--- \insertshortinstitute}
+  \end{beamercolorbox}%
+  \begin{beamercolorbox}[sep=0.5ex,wd=.333333\paperwidth,ht=3.25ex,dp=1.25ex,center]{title in head/foot}%
+    \usebeamerfont{title in head/foot}\insertshorttitle
+  \end{beamercolorbox}%
+  \begin{beamercolorbox}[sep=0.5ex,wd=.333333\paperwidth,ht=3.25ex,dp=1.25ex,right]{date in head/foot}%
+    %\usebeamerfont{date in head/foot}\insertshortdate{}\hspace*{2em}
+    Page \insertframenumber{} %/ \inserttotalframenumber\hspace*{2ex} 
+  \end{beamercolorbox}}%
+  \vskip0pt%
+}
+
+% ------------------------------------------------------------------------------------------------
+%	CAPTIONS
+% ------------------------------------------------------------------------------------------------
+\setbeamertemplate{caption label separator}{: }
+
+% ------------------------------------------------------------------------------------------------
+%	BLOCKS
+% ------------------------------------------------------------------------------------------------
+\setbeamertemplate{block begin}
+{
+  \setbeamercolor{item}{parent=block body}
+  \par\vskip\medskipamount%
+  \begin{beamercolorbox}[sep=.5ex,dp=0.6ex,leftskip=0.5ex,rightskip=0.5ex]{block title}
+    \usebeamerfont*{block title}\insertblocktitle%
+  \end{beamercolorbox}%
+  {\parskip0pt\par}%
+  {\nointerlineskip\vskip-0.5pt}%
+  \usebeamerfont{block body}%
+  \begin{beamercolorbox}[sep=.5ex,dp=0.6ex,leftskip=0.5ex,rightskip=0.5ex,vmode]{block body}%
+}
+\setbeamertemplate{block end}  
+{\end{beamercolorbox}\vskip\smallskipamount}
+
+\setbeamertemplate{block alerted begin}
+{
+  \setbeamercolor{item}{parent=block body alerted}
+  \par\vskip\medskipamount%
+  \begin{beamercolorbox}[sep=.5ex,dp=0.6ex,leftskip=0.5ex,rightskip=0.5ex]{block title alerted}
+    \usebeamerfont*{block title alerted}\insertblocktitle%
+  \end{beamercolorbox}%
+  {\parskip0pt\par}%
+  {\nointerlineskip\vskip-0.5pt}%
+  \usebeamerfont{block body alerted}%
+  \begin{beamercolorbox}[sep=.5ex,dp=0.6ex,leftskip=0.5ex,rightskip=0.5ex,vmode]{block body alerted}%
+}
+\setbeamertemplate{block alerted end}
+{\end{beamercolorbox}\vskip\smallskipamount}
+
+\setbeamertemplate{block example begin}
+{
+  \par\vskip\medskipamount%
+  \begin{beamercolorbox}[sep=.5ex,dp=0.6ex,leftskip=0.5ex,rightskip=0.5ex]{block title example}
+    \usebeamerfont*{block title example}\insertblocktitle%
+  \end{beamercolorbox}%
+  {\parskip0pt\par}%
+  {\nointerlineskip\vskip-0.5pt}%
+  \usebeamerfont{block body example}%
+  \begin{beamercolorbox}[sep=.5ex,dp=0.6ex,leftskip=0.5ex,rightskip=0.5ex,vmode]{block body example}%
+}
+\setbeamertemplate{block example end}
+{\end{beamercolorbox}\vskip\smallskipamount}
+
+% ------------------------------------------------------------------------------------------------
+%	BLOCK HOVERING ABOVE THE SLIDE
+% ------------------------------------------------------------------------------------------------
+
+\newcommand<>{\hover}[1]{\uncover#2{%
+	\begin{tikzpicture}[remember picture,overlay]%
+	\draw[fill,opacity=0.4] (current page.south west)
+	rectangle (current page.north east);
+	\node at (current page.center) {#1};
+	\end{tikzpicture}}
+	}
+
+% ------------------------------------------------------------------------------------------------
+%	VERTICALLY ALIGNED COLUMNS
+% ------------------------------------------------------------------------------------------------
+	
+\usepackage{environ}% Required for \NewEnviron, i.e. to read the whole body of the environment
+
+\newcounter{acolumn}%  Number of current column
+\newlength{\acolumnmaxheight}%   Maximum column height
+
+
+% `column` replacement to measure height
+\newenvironment{@acolumn}[1]{%
+    \stepcounter{acolumn}%
+    \begin{lrbox}{\@tempboxa}%
+    \begin{minipage}{#1}%
+}{%
+    \end{minipage}
+    \end{lrbox}
+    \@tempdimc=\dimexpr\ht\@tempboxa+\dp\@tempboxa\relax
+    % Save height of this column:
+    \expandafter\xdef\csname acolumn@height@\roman{acolumn}\endcsname{\the\@tempdimc}%
+    % Save maximum height
+    \ifdim\@tempdimc>\acolumnmaxheight
+        \global\acolumnmaxheight=\@tempdimc
+    \fi
+}
+
+% `column` wrapper which sets the height beforehand
+\newenvironment{@@acolumn}[1]{%
+    \stepcounter{acolumn}%
+    % The \autoheight macro contains a \vspace macro with the maximum height minus the natural column height
+    \edef\autoheight{\noexpand\vspace*{\dimexpr\acolumnmaxheight-\csname acolumn@height@\roman{acolumn}\endcsname\relax}}%
+    % Call original `column`:
+    \orig@column{#1}%
+}{%
+    \endorig@column
+}
+
+% Save orignal `column` environment away
+\let\orig@column\column
+\let\endorig@column\endcolumn
+
+% `columns` variant with automatic height adjustment
+\NewEnviron{acolumns}[1][]{%
+    % Init vars:
+    \setcounter{acolumn}{0}%
+    \setlength{\acolumnmaxheight}{0pt}%
+    \def\autoheight{\vspace*{0pt}}%
+    % Set `column` environment to special measuring environment
+    \let\column\@acolumn
+    \let\endcolumn\end@acolumn
+    \BODY% measure heights
+    % Reset counter for second processing round
+    \setcounter{acolumn}{0}%
+    % Set `column` environment to wrapper
+    \let\column\@@acolumn
+    \let\endcolumn\end@@acolumn
+    % Finally process columns now for real
+    \begin{columns}[#1]%
+        \BODY
+    \end{columns}%
+}
+
+% ------------------------------------------------------------------------------------------------
+%	IMAGES
+% ------------------------------------------------------------------------------------------------
+
+\newbox\mytempbox
+\newdimen\mytempdimen
+
+\newcommand\includegraphicscopyright[3][]{%
+  \leavevmode\vbox{\vskip3pt\raggedright\setbox\mytempbox=\hbox{\includegraphics[#1]{#2}}%
+    \mytempdimen=\wd\mytempbox\box\mytempbox\par\vskip1pt%
+    \usebeamerfont{copyright text}{\usebeamercolor[fg]{copyright text}{\vbox{\hsize=\mytempdimen#3}}}\vskip3pt%
+}}
+
+\begin{document}
+
+% Hide progress bar and footline on titlepage
+\begin{frame}[plain]
+\titlepage
+\end{frame}
+
+\begin{frame}{Hi everybody!}
+\protect\hypertarget{hi-everybody}{}
+
+\textbf{Overview} \vspace{-0.15in}
+
+\begin{itemize}
+\tightlist
+\item
+  Introduction to Bayesian inference
+\item
+  Linear and generalized linear models
+\item
+  Hierarchical models
+\item
+  Prior selection and model parameterization
+\item
+  Model selection
+\item
+  Model criticism, diagnostics, and visualization
+\item
+  Markov chain Monte Carlo
+\item
+  Bayesian workflow
+\end{itemize}
+
+In other words, what are Bayesian models? How can we use them to do cool
+science things? How can we interrogate their limitations?
+
+\textbf{Website:} \url{https://github.com/fintzij/BRB_Bayes_course}
+
+\end{frame}
+
+\begin{frame}{Hi everybody!}
+\protect\hypertarget{hi-everybody-1}{}
+
+\textbf{Materials} \vspace{-0.15in}
+
+\begin{itemize}
+\tightlist
+\item
+  Lectures: Richard McElreath's Statistical Rethinking (StaRt), Winter
+  2019.
+\item
+  Software: leaning towards raw \textbf{Stan}, but
+  \textbf{brms}/\textbf{RStanArm} also an option.
+\item
+  Additional books, papers, and case studies linked on website.
+\end{itemize}
+
+\textbf{Plan} \vspace{-0.15in}
+
+\begin{itemize}
+\tightlist
+\item
+  At home: watch \textasciitilde{}2 lecture videos (approx. 2hrs/wk, 1
+  hour at 2x speed).
+\item
+  When we meet: summarize, supplement with examples, case studies, and
+  additional material.
+\end{itemize}
+
+\textbf{VERY IMPORTANT:} I want this to be useful. Tell me if I'm going
+too fast/slow, can explain something more clearly, or there's something
+you to cover. Don't tell me if my jokes are lame.
+
+\end{frame}
+
+\begin{frame}{This week - ``Basics'' of Bayesian inference}
+\protect\hypertarget{this-week---basics-of-bayesian-inference}{}
+
+Lectures 1 and 2 of StaRt touched on the following topics:
+\vspace{-0.15in}
+
+\begin{itemize}
+    \item Statistical procedures for interepretting natural phenomena.
+    \begin{itemize}
+        \item Models as golems. 
+        \item \textit{Core idea:} Count all the ways data can happen, according to assumptions. Assumptions with more ways that are consistent with data are more plausible. 
+    \end{itemize}
+    \item Small world (model) vs. large world (real world).
+    \item Workflow: design model (globe) $\rightarrow$ collect then condition on data (throw it around, compute posterior) $\rightarrow$ evaluate (sample to summarize, simulate to critique). 
+\end{itemize}
+
+\onslide<2>{
+I want to talk more about 
+\begin{itemize}
+\item Bayesian inference and how it inference differs from frequentist inference.
+\item What is a Bayesian model? 
+\end{itemize}
+}
+
+\end{frame}
+
+\begin{frame}{Quantifying uncertainty}
+\protect\hypertarget{quantifying-uncertainty}{}
+
+\href{https://rss.onlinelibrary.wiley.com/doi/full/10.1111/j.1740-9713.2004.00050.x}{Dicing
+with the unknown} (T. O'Hagan, 2004):\vspace{-0.15in}
+
+\begin{itemize}
+\tightlist
+\item
+  Two kinds of
+  \href{https://en.wikipedia.org/wiki/Uncertainty_quantification}{uncertainty}:
+  \emph{aleatory} and \emph{epistemic}.
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Aleatory: due to randomness, e.g., outcomes of rolling dice.
+  \item
+    Epistemic: uncertainty about things one could know, but doesn't in
+    practice, e.g., disease risk factors for participants in a clinical
+    trial.
+  \item
+    \emph{N.B.} Two people may have different epistemic uncertainty
+    about the same question.
+  \end{itemize}
+\item
+  Two definitions of probability: \emph{frequency} and \emph{degree of
+  belief}.
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Frequency of occurrence under infinite replication, describes
+    aleatory uncertainty.
+  \item
+    For Bayesians, probability represents the degree of belief about a
+    proposition and may describe both aleatory and epistemic
+    uncertainty.
+  \end{itemize}
+\item
+  Implications:
+
+  \begin{itemize}
+  \tightlist
+  \item
+    p-values and CIs are statements about aleatory uncertainty.
+  \item
+    Bayesians quantify uncertainty using probability distributions
+    conditioned on the data.
+  \item
+    ``Bayesian statistics is about the statistician, for whatever reason
+    they may have, guessing or estimating the distribution of the next
+    outcome''
+    (\href{https://www.sciencedirect.com/journal/journal-of-statistical-planning-and-inference/vol/143/issue/10}{Walker},
+    2013).
+  \item
+    Bayesians quantify uncertainty about parameters, \(\theta\), given
+    data, \(y\), in the \emph{posterior}, \(\pi(\theta|y)\).
+  \end{itemize}
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}{Bayesian inference}
+\protect\hypertarget{bayesian-inference}{}
+
+Some notation: \vspace{-0.15in}
+
+\begin{itemize}
+\tightlist
+\item
+  \(\theta\): unobserved parameter, e.g.,
+  \(\theta = \Pr(Y = \mr{heads})\).
+\item
+  \(y\): observed data, e.g.,
+  \(y \in \lbrace{\mr{heads},\ \mr{tails}\rbrace}\).
+\item
+  \(\wtil{y}\): unknown but possibly observable quantities, e.g., future
+  data.
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}{Bayesian inference}
+\protect\hypertarget{bayesian-inference-1}{}
+
+Bayesian inference \emph{always} starts with a model for the
+\emph{joint} probability distribution of \(\theta\) and \(y\):
+\[\pi(\theta, y) = f(y|\theta)\pi(\theta).\]
+
+\begin{itemize}
+\tightlist
+\item
+  \(f(y|\theta)\) is the \emph{sampling distribution} for \(y\) given
+  \(\theta\).
+\item
+  \(\pi(\theta)\) is the prior distribution of \(\theta\).
+\end{itemize}
+
+\textbf{Bayes rule} yields the \emph{posterior density}
+\[\pi(\theta|y) =  \frac{f(y,\theta)}{\pi(y)} = \frac{f(y|\theta)\pi(\theta)}{\pi(y)},\]
+where
+\(\pi(y) = \int\pi(y,\theta)\rmd\theta = \int f(y|\theta)\pi(\theta)\rmd\theta\).
+
+\end{frame}
+
+\begin{frame}{Important distributions}
+\protect\hypertarget{important-distributions}{}
+
+At various points, we will be interested in the following distributions:
+\vspace{-0.15in}
+
+\begin{itemize}
+\tightlist
+\item
+  \emph{Prior distirbution}: \(\pi(\theta)\).
+\item
+  \emph{Sampling distribution}: \(f(y|theta)\).
+\item
+  \emph{Joint distribution}: \(\pi(y,\theta) = f(y|\theta)\pi(\theta)\).
+\item
+  \emph{Marginal distribution}:
+  \(\pi(y) = \int \pi(y,\theta) \rmd \theta = \int f(y|\theta)\pi(\theta)\rmd\theta\).
+\item
+  \emph{Posterior distribution}:
+  \(\pi(\theta|y) = \frac{f(y|\theta)\pi(\theta)}{\pi(y)} \propto f(y|\theta)\pi(\theta)\).
+\item
+  \emph{Posterior predictive}: \(f(\wtil{y}|y) = \int f(y|\).
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}{Bayesian inference}
+\protect\hypertarget{bayesian-inference-2}{}
+
+The term \(\pi(y) = \int f(y|\theta)\pi(\theta)\rmd\theta\) is a
+normalizing constant. \vspace{-0.15in}
+
+\begin{itemize}
+\tightlist
+\item
+  Sometimes solvable analytically, e.g., conjugate priors.
+\item
+  Can be difficult to evaluate without conjugacy, especially in high
+  dimensions.
+\item
+  Markov chain Monte Carlo (next time) \(\implies\) don't evaluate
+  explicitly: \[\begin{aligned}
+  \pi(\theta|y)&\propto f(y|\theta)\pi(theta) \\
+  \mr{Posterior} &\propto \mr{Likelihood} \times \mr{Prior}
+  \end{aligned}\]
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}{Why Bayes?}
+\protect\hypertarget{why-bayes}{}
+
+\begin{itemize}
+\tightlist
+\item
+  Incorporate prior information.
+\item
+  Sample to summarize: all possible inferences computable from the
+  posterior.
+\item
+  Flexibility: specify prior + likelihood, turn the crank.
+\item
+  Self-consistent framework for handling missing data.
+\item
+  Diagnostics.
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}{Example}
+\protect\hypertarget{example}{}
+
+Let \$Y = \$number of earthquakes of magnitude \textgreater{}4.0 per
+year in southern California.
+
+\begin{itemize}
+\tightlist
+\item
+  Model: \(Y|\lambda \sim \mr{Poisson}(\lambda)\), where \(\lambda=\)
+  rate of earthquake occurrence.
+\item
+  Prior:
+  \(\lambda\sim \mr{Gamma}(\alpha, \beta) \implies \mr{E}(\lambda) = \alpha/\beta,\ \mr{SD}(\lambda) = \sqrt{\alpha}/\beta\).
+  Set \(\alpha,\beta\) s.t., \(\mr{E}(\lambda) = 12\), and
+  \(SD(\lambda) \approx 8.5\).
+\item
+  Data: 5 years, observe 21, 9, 15, 16, and 18 earthquakes w/magnitude
+  \textgreater{} 4.0 in each of the years.
+\item
+  Posterior:
+  \(\lambda|y ~ \mr{Gamma}(\alpha + \sum_{i=1}^5y_i, \beta + 5)\).
+\end{itemize}
+
+\includegraphics{Introduction-to-Bayesian-Statistics_files/figure-beamer/gamma_pois-1.pdf}
+
+\end{frame}
+
+\begin{frame}{Next week}
+\protect\hypertarget{next-week}{}
+
+Skipping ahead a bit. Watch lecture 10 (SmaRt).
+
+We'll talk about: - Sampling - Markov chain Monte Carlo - Stan
+
+\end{frame}
+
+\hypertarget{references}{%
+\section{References}\label{references}}
+
+\begin{frame}{}
+\protect\hypertarget{section}{}
+
+T. O'Hagan ``Dicing with the unknown.'' \emph{Significance} 1.3 (2004):
+132-133.
+
+S.G. Walker ``Bayesian inference with misspecified models.''
+\emph{Journal of Statistical Planning and Inference} 143.10 (2013):
+1621-1633.
+
+\end{frame}
+
+\end{document}

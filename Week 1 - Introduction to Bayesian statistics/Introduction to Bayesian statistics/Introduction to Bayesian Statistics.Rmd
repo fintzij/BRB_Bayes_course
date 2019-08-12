@@ -1,0 +1,193 @@
+---
+title: "Essentials of Bayesian Modeling"
+shorttitle: "Essentials of Bayesian Modeling"
+subtitle: "Course overview and introduction to Bayesian statistics"
+author: "Jon Fintzi"
+short-author: "Jon Fintzi"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+short-date: '`r format(Sys.Date(), "%m/%d/%y")`'
+institute: | 
+  | National Institute of Allergy and Infectious Diseases
+  | National Institutes of Health
+short-institute: "Biostatistics Research Branch"
+department: "Biostatistics Research Branch" # Institute must be defined
+mainfont: Roboto Light
+monofont: Roboto Mono
+fontsize: 13pt
+classoption: aspectratio = 1610
+output: 
+   youngmetro::metro_beamer
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, cache = TRUE, message = FALSE)
+if (!require("tidyverse")) {
+  install.packages("tidyverse", dependencies = TRUE) 
+}
+library(tidyverse)
+library(cowplot)
+library(ggplot2)
+theme_set(theme_minimal(base_family = "sans"))
+```
+
+## Hi everybody!
+
+**Overview**
+\vspace{-0.15in}
+
+- Introduction to Bayesian inference
+- Linear and generalized linear models
+- Hierarchical models
+- Prior selection and model parameterization
+- Model selection
+- Model criticism, diagnostics, and visualization
+- Markov chain Monte Carlo
+- Bayesian workflow
+
+In other words, what are Bayesian models? How can we use them to do cool science things? How can we interrogate their limitations?
+
+**Website:** \url{https://github.com/fintzij/BRB_Bayes_course}
+
+## Hi everybody!
+
+**Materials**
+\vspace{-0.15in}
+
+- Lectures: Richard McElreath's Statistical Rethinking (StaRt), Winter 2019. 
+- Software: leaning towards raw **Stan**, but **brms**/**RStanArm** also an option.
+- Additional books, papers, and case studies linked on website. 
+
+**Plan**
+\vspace{-0.15in}
+
+- At home: watch ~2 lecture videos (approx. 2hrs/wk, 1 hour at 2x speed).
+- When we meet: summarize, supplement with examples, case studies, and additional material.
+
+**VERY IMPORTANT:** I want this to be useful. Tell me if I'm going too fast/slow, can explain something more clearly, or there's something you to cover. Don't tell me if my jokes are lame.
+
+## This week - "Basics" of Bayesian inference 
+
+Lectures 1 and 2 of StaRt touched on the following topics:
+\vspace{-0.15in}
+
+\begin{itemize}
+    \item Statistical procedures for interepretting natural phenomena.
+    \begin{itemize}
+        \item Models as golems. 
+        \item \textit{Core idea:} Count all the ways data can happen, according to assumptions. Assumptions with more ways that are consistent with data are more plausible. 
+    \end{itemize}
+    \item Small world (model) vs. large world (real world).
+    \item Workflow: design model (globe) $\rightarrow$ collect then condition on data (throw it around, compute posterior) $\rightarrow$ evaluate (sample to summarize, simulate to critique). 
+\end{itemize}
+
+\onslide<2>{
+I want to talk more about 
+\begin{itemize}
+\item Bayesian inference and how it inference differs from frequentist inference.
+\item What is a Bayesian model? 
+\end{itemize}
+}
+
+## Quantifying uncertainty
+
+[Dicing with the unknown](https://rss.onlinelibrary.wiley.com/doi/full/10.1111/j.1740-9713.2004.00050.x) (T. O'Hagan, 2004):\vspace{-0.15in}
+
+- Two kinds of [uncertainty](https://en.wikipedia.org/wiki/Uncertainty_quantification): *aleatory* and *epistemic*.
+    - Aleatory: due to randomness, e.g., outcomes of rolling dice. 
+    - Epistemic: uncertainty about things one could know, but doesn't in practice, e.g., disease risk factors for participants in a clinical trial. 
+    - *N.B.* Two people may have different epistemic uncertainty about the same question.
+- Two definitions of probability: *frequency* and *degree of belief*. 
+    - Frequency of occurrence under infinite replication, describes aleatory uncertainty. 
+    - For Bayesians, probability represents the degree of belief about a proposition and may describe both aleatory and epistemic uncertainty.
+- Implications:
+    - p-values and CIs are statements about aleatory uncertainty. 
+    - Bayesians quantify uncertainty using probability distributions conditioned on the data.
+    - "Bayesian statistics is about the statistician, for whatever reason they may have, guessing or estimating the distribution of the next outcome" ([Walker](https://www.sciencedirect.com/journal/journal-of-statistical-planning-and-inference/vol/143/issue/10), 2013). 
+    - Bayesians quantify uncertainty about parameters, $\theta$, given data, $y$, in the *posterior*, $\pi(\theta|y)$.
+
+## Bayesian inference
+Some notation: \vspace{-0.15in}
+
+- $\theta$: unobserved parameter, e.g., $\theta = \Pr(Y = \mr{heads})$. 
+- $y$: observed data, e.g., $y \in \lbrace{\mr{heads},\ \mr{tails}\rbrace}$.
+- $\wtil{y}$: unknown but possibly observable quantities, e.g., future data.
+
+## Bayesian inference
+
+Bayesian inference *always* starts with a model for the *joint* probability distribution of $\theta$ and $y$: $$\pi(\theta, y) = f(y|\theta)\pi(\theta).$$
+
+- $f(y|\theta)$ is the *sampling distribution* for $y$ given $\theta$. 
+- $\pi(\theta)$ is the prior distribution of $\theta$. 
+
+**Bayes rule** yields the *posterior density* $$\pi(\theta|y) =  \frac{f(y,\theta)}{\pi(y)} = \frac{f(y|\theta)\pi(\theta)}{\pi(y)},$$
+where $\pi(y) = \int\pi(y,\theta)\rmd\theta = \int f(y|\theta)\pi(\theta)\rmd\theta$.
+
+## Important distributions
+At various points, we will be interested in the following distributions: \vspace{-0.15in}
+
+- *Prior distirbution*: $\pi(\theta)$. 
+- *Sampling distribution*: $f(y|theta)$. 
+- *Joint distribution*: $\pi(y,\theta) = f(y|\theta)\pi(\theta)$.
+- *Marginal distribution*: $\pi(y) = \int \pi(y,\theta) \rmd \theta = \int f(y|\theta)\pi(\theta)\rmd\theta$.
+- *Posterior distribution*: $\pi(\theta|y) = \frac{f(y|\theta)\pi(\theta)}{\pi(y)} \propto f(y|\theta)\pi(\theta)$. 
+- *Posterior predictive*: $f(\wtil{y}|y) = \int f(y|$.
+
+## Bayesian inference
+The term $\pi(y) = \int f(y|\theta)\pi(\theta)\rmd\theta$ is a normalizing constant. \vspace{-0.15in}
+
+- Sometimes solvable analytically, e.g., conjugate priors. 
+- Can be difficult to evaluate without conjugacy, especially in high dimensions. 
+- Markov chain Monte Carlo (next time) $\implies$ don't evaluate explicitly:
+$$\begin{aligned}
+\pi(\theta|y)&\propto f(y|\theta)\pi(theta) \\
+\mr{Posterior} &\propto \mr{Likelihood} \times \mr{Prior}
+\end{aligned}$$
+
+## Why Bayes?
+
+- Incorporate prior information.
+- Sample to summarize: all possible inferences computable from the posterior. 
+- Flexibility: specify prior + likelihood, turn the crank.
+- Self-consistent framework for handling missing data. 
+- Diagnostics.
+
+## Example
+
+Let $Y = $number of earthquakes of magnitude >4.0 per year in southern California.
+
+- Model: $Y|\lambda \sim \mr{Poisson}(\lambda)$, where $\lambda=$ rate of earthquake occurrence. 
+- Prior: $\lambda\sim \mr{Gamma}(\alpha, \beta) \implies \mr{E}(\lambda) = \alpha/\beta,\ \mr{SD}(\lambda) = \sqrt{\alpha}/\beta$. Set $\alpha,\beta$ s.t., $\mr{E}(\lambda) = 12$, and $SD(\lambda) \approx 8.5$. 
+- Data: 5 years, observe 21, 9, 15, 16, and 18 earthquakes w/magnitude > 4.0 in each of the years. 
+- Posterior: $\lambda|y ~ \mr{Gamma}(\alpha + \sum_{i=1}^5y_i, \beta + 5)$.
+
+```{r gamma_pois, echo = FALSE, fig.height=3}
+dats = c(21,9,15,16,18)
+ggplot(data.frame(x = seq(0,50,by=0.1), y = dgamma(seq(0,50,by=0.1), 2, rate = 1/6)),
+       aes(x=x,y=y)) + 
+    geom_line(aes(colour = "Prior"),linetype = "dashed", size = 1.5) +
+    geom_line(data = data.frame(x = seq(0,50,by=0.1), 
+                                y = dgamma(seq(0,50,by=0.1), 2 + sum(dats), rate = 1/6 + 5)),
+       aes(x=x,y=y, colour = "Posterior"), size = 1.5) +  
+    geom_vline(xintercept = dats, size = 1.5, colour = "Darkblue", alpha = 0.5) + 
+    scale_colour_manual("",breaks = c("Prior",  "Posterior"),
+                        values = c("Darkgreen", "Darkred")) + 
+    labs(x = bquote(lambda), y = "Density", title = bquote("Gamma("~alpha~"= 2,"~beta~"= 1/6) prior for "~lambda)) + 
+    theme(text = element_text(size = 20))
+```
+
+
+## Next week
+
+Skipping ahead a bit. Watch lecture 10 (SmaRt). 
+
+We'll talk about:
+- Sampling
+- Markov chain Monte Carlo
+- Stan
+
+# References
+
+## 
+T. O'Hagan "Dicing with the unknown." *Significance* 1.3 (2004): 132-133.
+
+S.G. Walker "Bayesian inference with misspecified models." *Journal of Statistical Planning and Inference* 143.10 (2013): 1621-1633.
