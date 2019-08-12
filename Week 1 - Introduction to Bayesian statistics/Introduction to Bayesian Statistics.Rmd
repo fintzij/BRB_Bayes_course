@@ -178,7 +178,7 @@ ggplot(data.frame(x = seq(0,50,by=0.1), y = dgamma(seq(0,50,by=0.1), 2, rate = 1
 
 ## Next week
 
-Skipping ahead a bit. Watch lecture 10 (SmaRt). 
+Skipping ahead a bit. Watch lecture 10 on MCMC (SmaRt). 
 
 We'll talk about:
 
@@ -192,3 +192,5 @@ We'll talk about:
 T. O'Hagan "Dicing with the unknown." *Significance* 1.3 (2004): 132-133.
 
 S.G. Walker "Bayesian inference with misspecified models." *Journal of Statistical Planning and Inference* 143.10 (2013): 1621-1633.
+
+This lecture also borrowed material from Vladimir Minin's [MCMC for infectious diseases](http://vnminin.github.io/SISMID_MCMC_I/) short course, and from Aki Vehtari's [Bayesian data analysis](https://github.com/avehtari/BDA_course_Aalto) course. These are both fantastic resources and you should check them out.
