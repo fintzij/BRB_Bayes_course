@@ -13,7 +13,7 @@ This repository collects supplementary materials for an applied course covering 
 - Bayesian workflow,
 - Markov chain Monte Carlo.
 
-The material presented in this course will largely derive from the Winter 2019 lectures by Richard McElreath (https://github.com/rmcelreath/statrethinking_winter2019). In broad strokes, the plan will be for participants in our class to watch two lectures per week, though at various points we may skip a few lectures or go through McElreath's course in a slightly different order. When we meet, we will review the main concepts covered in the online lectures and supplement the material with either worked examples, case studies, and additional mathematical/statistical details. Outlines of the material from our course will be posted in this repository along with links to references and additional readings.  
+The material presented in this course will largely track with the Winter 2019 lectures by Richard McElreath (https://github.com/rmcelreath/statrethinking_winter2019). In broad strokes, the plan will be for participants in our class to watch two lectures per week, though at various points we may skip a few lectures or go through McElreath's course in a slightly different order. When we meet, we will review the main concepts covered in the online lectures and supplement the material with either worked examples, case studies, and additional mathematical/statistical details. Outlines of the material from our course will be posted in this repository along with links to references and additional readings.  
 
 ## Materials 
 
@@ -26,11 +26,13 @@ We will fit models using Stan, which provides a state of the art platform for Ba
 ## Additional References
 
 Recommended books:
-- Robert, Christian. The Bayesian choice: from decision-theoretic foundations to computational implementation. Springer Science & Business Media, 2007.
-- Gelman, Andrew, et al. Bayesian data analysis. Chapman and Hall/CRC, 2013.
-- Hoff, Peter D. A first course in Bayesian statistical methods. Vol. 580. New York: Springer, 2009.
+- Robert, Christian. The Bayesian Choice: From Decision-Theoretic Foundations to Computational Implementation. Springer Science & Business Media, 2007.
+- Gelman, Andrew, et al. Bayesian Data Analysis. Chapman and Hall/CRC, 2013.
+- Hoff, Peter D. A First Course in Bayesian Statistical Methods. Vol. 580. New York: Springer, 2009.
+- Brooks, Steve, et al., eds. Handbook of Markov Chain Monte Carlo. CRC Press, 2011.
 
 Additional resources:
-- Stan forums: https://discourse.mc-stan.org/
-- Stan documentation: https://mc-stan.org/users/documentation/
-- Data methods discourse: https://discourse.datamethods.org/
+- [Stan forums](https://discourse.mc-stan.org/): get help from the pros, when I have a question someone else has usually asked it first.
+- [Stan documentation](https://mc-stan.org/users/documentation/): fantastic resource for all things Stan programming.
+- [Data methods discourse](https://discourse.datamethods.org/): thoughtful discourse on stats done right.
+- [Aki Vehtari's Bayes course](https://github.com/avehtari/BDA_course_Aalto): deeper, more mathematical presentation of what we'll cover. We'll borrow from this course as well.  
