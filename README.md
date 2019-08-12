@@ -17,7 +17,7 @@ The material presented in this course will largely track with the Winter 2019 le
 
 ## Materials 
 
-Week 1: <[Introduction to Bayesian statistics](https://www.google.com)>
+Week 1: [Introduction to Bayesian statistics](https://github.com/fintzij/BRB_Bayes_course/blob/master/Week%201%20-%20Introduction%20to%20Bayesian%20statistics/Introduction-to-Bayesian-Statistics.pdf)
 
 ## Software
 
