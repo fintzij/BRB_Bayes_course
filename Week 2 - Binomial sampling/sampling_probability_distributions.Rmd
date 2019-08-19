@@ -358,7 +358,7 @@ Bayesian inference *always* starts with a model for the **joint distribution** o
 
 **Critical:** We must never lose sight of how our model is defined. 
 
-For more on this, see this [case study](https://mc-stan.org/users/documentation/case-studies/mle-params.html) by Bob Carpenter. 
+For more on this, see case studies [here](http://rstudio-pubs-static.s3.amazonaws.com/486816_440106f76c944734a7d4c84761e37388.html) and [here study](https://mc-stan.org/users/documentation/case-studies/mle-params.html). 
 
 ## Why Non-Conjugate Priors?
 
