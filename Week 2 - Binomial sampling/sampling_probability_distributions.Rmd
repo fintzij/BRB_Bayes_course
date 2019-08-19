@@ -1,0 +1,390 @@
+---
+title: "Sampling Probability Distributions"
+shorttitle: "Sampling Probability Distributions"
+subtitle: "From conjugacy to Hamiltonian Monte Carlo"
+author: "Jon Fintzi"
+short-author: "Jon Fintzi"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+short-date: '`r format(Sys.Date(), "%m/%d/%y")`'
+institute: | 
+  | National Institute of Allergy and Infectious Diseases
+  | National Institutes of Health
+short-institute: "Biostatistics Research Branch"
+department: "Biostatistics Research Branch" 
+mainfont: Roboto Light
+monofont: Roboto Mono
+fontsize: 13pt
+classoption: aspectratio = 1610
+output: 
+   youngmetro::metro_beamer
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, cache = FALSE, message = FALSE, warning = FALSE)
+if (!require("tidyverse")) {
+  install.packages("tidyverse", dependencies = TRUE) 
+}
+library(tidyverse)
+library(cowplot)
+library(ggplot2)
+theme_set(theme_minimal(base_family = "sans"))
+```
+
+## Happy Monday-Funday!
+
+**Last time:**
+\vspace{-0.1in}
+
+- Bayesian inference *always* starts with a model for the **joint distribution** of $\theta$ and $y$:.\vspace{-0.1in} $$\pi(\theta, y) = f(y|\theta)\pi(\theta) = \pi(\theta|y)m(y).\vspace{-0.1in}$$
+  - $\pi(\theta|y)$ is the **posterior distribution** of $\theta$ given $y$,
+  - $f(y|\theta)$ is the **sampling distribution** for $y$ given $\theta$,
+  - $\pi(\theta)$ is the **prior distribution** of $\theta$,
+  - $m(y)$ is the **marginal distribution** of $y$. 
+- **Bayes rule** yields the **posterior distribution** \vspace{-0.1in}
+$$\pi(\theta|y) =  \frac{f(y,\theta)}{m(y)} = \frac{f(y|\theta)\pi(\theta)}{m(y)} \propto Likelihood\times Prior.\vspace{-0.1in}$$.
+- All of the information used in the *update* to our prior is encoded in the **likelihood**,\vspace{-0.1in} $$L(\mb{y}|\theta) = \prod_{i=1}^N f(y_i|\theta).\vspace{-0.1in}$$ 
+  - *Likelihood principle*: implies proportional likelihoods encode equivalent updates for a single observer.
+  - Two people can have different epistemic uncertainty (different priors).
+  - The likelihood principle does not imply equivalent Bayesian inferences (corollary to Gelman, 2017). 
+
+## Lecture 10 of Statistical Rethinking
+
+Key takeaways:\vspace{-0.1in}
+
+- Bayes is all about the posterior distribution, not how you compute it.
+- Sometimes, we can't get the posterior analytically, but we can approximate it by sampling. 
+- Samples also give us a way to approximate the distributions of complicated functionals of the posterior.
+- Markov Chain Monte Carlo is one way to sample. 
+  - Metropolis/Metropolis-Hastings.
+  - Hamiltonian Monte Carlo. 
+  
+## This Week
+
+**Iterations on Bayesian analysis of binomial data**\vspace{-0.1in}
+
+- Motivating example --- PREVAIL II Trial.
+- Analysis with conjugate priors, beta-binomial model.
+- Prior selection.
+- Analysis with non-conjugate priors.
+- First look at Stan if there's time. 
+
+## Motivating Example --- PREVAIL II Trial
+ 
+**Context:**\vspace{-0.1in}
+
+- 2014--2016 Ebola virus disease (EVD) outbreak in Guinea, Liberia, and Sierra Leone.
+- Over 28,000 suspected or confirmed cases and 11,000 fatalities. 
+- Urgent need to identify effective theraputics to reduce mortality. 
+
+**Partnership for Research on Ebola Virus in Liberia (PREVAIL) II trial:**\vspace{-0.1in}
+
+- Adaptive trial to determine the effectiveness of Zmapp, and possibly other agents, in reducing Ebola mortality. 
+- Primary endpoint: 28 day mortality on optimized standard of care (oSOC) vs. Zmapp + oSOC.
+- 72 patients enrolled at sites in Liberia, Sierra Leone, Guinea, and the US. \vspace{-0.1in}
+  - Overall mortality: 21/71 died (30%),
+  - SOC alone: 13/35 (37%),
+  - Zmapp + SOC: 8/36 (22%).
+- \sout{Super-duper} Barely Bayesian design (Proschan, 2016). 
+
+## Motivating Example --- PREVAIL II Trial
+
+**Target of inference:** $\pi(p_T,p_C|y_T,y_C)$, the posterior distributions for probability of death on treatment (T) and control (C). \vspace{-0.1in}
+
+- $p_T,p_C$: probabilities of 28 day mortality on T and C. 
+- $y_T,y_C$: # of deaths on T and C. 
+- $N_T,N_C$: # participants randomized to T and C. 
+
+**Some questions of interest:**\vspace{-0.1in}
+
+- Evidence for Zmapp + oSOC more effective than oSOC alone: $\Pr(p_T<p_C | y_T,y_C)$.
+- Effectiveness of Zmapp + oSOC, effectiveness of oSOC alone: $\pi(p_T|y_T),\ \pi(p_C|y_C)$. 
+
+## A Simple Model for Count Data
+
+**Binomial count model:**\vspace{-0.1in}
+
+- Arises as a model for *independent* binary random variables (RVs), $Z_i\in\lbrace 0,1\rbrace,\ i=1,\dots,N$, with *common success probability*, $p$. 
+- Let $Y = \sum_{i=1}^N Z_i$. The probability of seeing $Y=y$ successes in $N$ trials is
+\begin{align}
+\label{eqn:binom_pmf}
+\Pr(Y=y|p) &= \left(\begin{array}{c}N \\ y\end{array}\right)p^y(1-p)^{N-y}.\\
+&\propto p^y(1-p)^{N-y} \nonumber
+\end{align}
+- For fixed $y$, we can view (\ref{eqn:binom_pmf}) as a function of $p$ --- this is the **likelihood function**.
+- The maximum likelihood estimate (MLE), $\what{p} = y/N$, is the value of $p$ under which the observed data are most likely (i.e., $\what{p}$ maximizes the likelihood).
+
+## A Simple Model for Count Data
+
+```{r binom_dists, fig.width = 10}
+
+binom_pmfs = 
+  data.frame(y = rep(0:35, 2),
+             prob = dbinom(rep(0:35,2), size = 35, rep(c(0.5, 0.22), each = 36)),
+             p = rep(paste0("p = ", c(0.5, 0.22)), each = 36))
+binom_liks = 
+  data.frame(p = rep(seq(0,1,by=0.001), 2),
+             y = rep(paste0("y = ", c(8, 17), "; N = 35"), each = 1001),
+             mle = rep(c(8/35, 17/35), each = 1001),
+             mle_lik = dbinom(rep(c(8, 17), each = 1001), 
+                                size = 35, rep(c(8,17)/35,each = 1001)),
+             binom_lik = dbinom(rep(c(8, 17), each = 1001), 
+                                size = 35, rep(seq(0,1,by=0.001),2)))
+binom_liks$y = factor(binom_liks$y, levels = rev(levels(binom_liks$y)))
+
+ggplot(binom_pmfs, 
+       aes(x = y, y = prob)) + 
+  geom_bar(stat = "identity", colour= "white", fill = "grey40", alpha = 0.9) + 
+  facet_grid(.~p) + 
+  labs(y = "Binomial probability", title = "Binomial distributions for two values of p") + 
+  theme(text = element_text(size = 20)) -> bpmfs
+
+ggplot(binom_liks, 
+       aes(x = p, y = binom_lik)) + 
+  geom_line(stat = "identity", colour= "grey40", alpha = 0.9) + 
+  geom_segment(data = binom_liks, aes(y = 0, yend = mle_lik, x = mle, xend = mle), colour = "darkred") + 
+  facet_grid(.~y) + 
+  labs(y = "Binomial likelihood", title = "Binomial likelihoods for two datasets", subtitle = "Likelihoods in black, MLEs in red") + 
+  theme(text = element_text(size = 20)) -> bliks
+
+cowplot::plot_grid(bpmfs, bliks, nrow = 2, align = "hv") 
+```
+
+## Beta Distribution as a Prior for a Binomial Probability
+
+**Beta distribution**\vspace{-0.1in}
+
+- If we though all values of $p$ were equally likely, could take $p\sim\mr{Unif}(0,1)$. In general, this is too restrictive. 
+- More flexible: $\theta\sim\mr{Beta}(a,b),\ \mr{with}\  a>0,b>0$,  where\vspace{-0.1in}
+\begin{align}
+\pi(\theta|a,b) &= \frac{\Gamma(a+b)}{\Gamma(a)\Gamma{b}}p^{(a-1)}(1-p)^{b-1},\\
+&\propto p^{(a-1)}(1-p)^{b-1}, \nonumber
+\end{align}
+for $0<p<1$ and where $\Gamma(\cdot)$ is the gamma function[^1]. 
+- $p\sim\mr{Unif}(0,1)$ is equivalent to $p\sim\mr{Beta}(1,1)$. 
+- Moments: \vspace{-0.1in}
+\begin{align*}
+   \E(p|a,b) &= \frac{a}{a+b},\\
+   \Var(p|a,b) &= \frac{ab}{(a+b)^2(a+b+1)}.
+\end{align*}
+
+[^1]: $\Gamma(z) = \int_0^\infty t^{z-1}e^{-t}\rmd t$, more on the Beta distribution [here](https://en.wikipedia.org/wiki/Beta_distribution).  
+
+## Beta Distribution as a Prior for a Binomial Probability
+
+```{r beta_dists, figure.width = 15}
+betas = 
+  data.frame(p = rep(seq(0.001,0.999,by=0.001), 6),
+             grp = factor(rep(1:6, each = 999)),
+             a = rep(c(1,1,1,2,4,5), each = 999),
+             b = rep(c(1,2,5,2,2,5), each = 999),
+             dens = dbeta(rep(seq(0.001,0.999,by=0.001), 6), 
+                          shape1 = rep(c(1,1,1,2,4,5), each = 999),
+                          shape2 = rep(c(1,2,5,2,2,5), each = 999)),
+             mean = 0,
+             dens_mean = 0)
+betas$mean = betas$a / (betas$a + betas$b)
+betas$dens_mean = dbeta(betas$mean, betas$a, betas$b)
+betas$grp = factor(betas$grp, labels = paste0("a = ", c(1,1,1,2,4,5),", b = ", c(1,2,5,2,2,5)))
+
+ggplot(betas, aes(x = p, y = dens)) + 
+  geom_line(stat = "identity", colour= "grey40", alpha = 0.9) + 
+  geom_vline(aes(xintercept = mean), colour = "darkred") + 
+  # geom_segment(aes(ymin = 0, yend = dens_mean, x = mean, xend = mean), colour = "darkred") + 
+  facet_wrap(~grp, nrow = 2) + 
+  labs(y = "Beta density", title = "Beta densities for various hyperparameters", subtitle = "Density in black, mean in red") + 
+  scale_x_continuous(limits = c(0,1), expand = c(0,0)) +
+  scale_y_continuous(limits = c(0,5), expand = c(0,0)) + 
+  theme(text = element_text(size = 20)) 
+
+```
+
+## Posterior Derivation
+
+In the Beta-Binomial hierarchy, concentrate only on terms that involve $\theta$. 
+\begin{align*}
+\textcolor{green}{\pi(p|y)} &\propto \textcolor{blue}{L(y|p)}\textcolor{red}{\pi(p)}, \\ 
+ &= \textcolor{blue}{p^y(1-p)^{N-y}} \times \textcolor{red}{p^{a-1}(1-p)^{b-1}},\\
+ &= \textcolor{green}{p^{y+a-1}(1-p)^{N-y+b-1}},\\
+ &= \textcolor{green}{p^{\wtil{a}-1}(1-p)^{\wtil{b}-1}},
+\end{align*}
+where $\wtil{a} = y+a$ and $\wtil{b} = N-y+b$. 
+
+- The posterior takes the form of a $\mr{Beta}(\wtil{a},\wtil{b})$! 
+- We say the prior is [*conjugate*](https://en.wikipedia.org/wiki/Conjugate_prior) when the posterior is of the same form as the prior. 
+- Fun fact: all exponential family distributions have conjugate priors!
+
+## PREVAIL II Posterior Distributions
+
+- Priors: $p_T \sim \mr{Beta}(1,1)$ and $p_C\sim\mr{Beta}(1,1)$. 
+- Data: $y_T = 8$ and $y_C=13$, with $N_T = 36$ and $N_C=35$.
+- Posteriors: $p_T|y_T\sim\mr{Beta}(9,29)$ and $p_C|y_C\sim\mr{Beta}(14, 23).$
+  - Posterior medians (95% Credible Intervals): 
+    - Zmapp + oSOC, $p_T|y_T$ 0.23 (0.12, 0.38),
+    - oSOC alone, $p_C|y_C$: 0.38 (0.23, 0.54).
+    - Risk difference, $p_T-p_C\ |\ y_T,y_C$: -0.14 (-0.34, 0.06).
+    - Risk ratio, $p_T/p_C\ |\ y_T,y_C$: 0.62 (0.29, 1.24).
+    - Odds ratio, $\left[(p_T/(1-p_T))\ /\ (p_C/(1-p_C))\right]\ |\ y_T,y_C:$  $0.50 (0.18, 1.36)$
+    - $\Pr(p_T<p_C|y_T,y_C)\approx 0.91$. 
+
+## PREVAIL II Posterior Distributions
+
+```{r prevail_posts}
+
+prevail = 
+  data.frame(
+    trt = rep(c("Zmapp + oSOC", "oSOC alone"), each = 999*3),
+    dist = rep(c("Prior", "Likelihood", "Posterior"), each = 999),
+    x = rep(seq(0.001,0.999,by=0.001),3),
+    prob = dbeta(seq(0.001,0.999,by=0.001),
+                 shape1 = rep(c(1,8,9,1,13,14), each = 999),
+                 shape2 = rep(c(1,28,29,1,22,23), each = 999))
+  )
+
+ggplot(prevail, aes(x = x, y = prob, colour = dist, group = dist, linetype = dist)) + 
+  geom_line() + 
+  facet_grid(.~trt) + 
+  scale_color_brewer("", type = "qual", palette = 6) + 
+  scale_linetype_discrete("") + 
+  scale_x_continuous(limits = c(0,1), expand = c(0,0)) +
+  scale_y_continuous(limits = c(0,6), expand = c(0,0)) + 
+  theme(text = element_text(size = 20)) + 
+  labs(x = "p", y = "Density")
+
+```
+
+## Posterior Mean and Likelihood-Prior Interaction
+
+- Recall the mean of a Beta$(a,b)$ is $a/(a+b)$.
+- The posterior mean of a Beta$(y+a,N-y+b)$ is therefore \vspace{-0.1in}
+\begin{align*}
+\E(p|y) &= \frac{y+a}{N+a+b}\\
+&= \frac{y}{N+a+b} + \frac{a}{N+a+b}\\
+&= \frac{y}{N}\times \frac{N}{N+a+b} + \frac{a}{a+b}\times \frac{a+b}{N+a+b}\\
+&= \mr{MLE} \times \mr{W} + \mr{Prior Mean} \times (\mr{1-W}),\vspace{-0.1in}
+\end{align*}
+where the *weight* W is $\mr{W} = \frac{N}{N+a+b}.$
+- As $N$ increases, the weight tends to 1, so that the posterior mean gets closer to the MLE.
+- Notice that the uniform prior $a=b=1$ gives a posterior mean of $\E(p|y) = \frac{y+1}{N+2}.$
+
+## Choosing Prior Hyperparameters
+
+**How to specify hyperparameters $a$ and $b$?**\vspace{-0.1in}
+
+- *Suggestion #1:* Use information about prior mean prior "sample size."
+  - Prior mean: m_{prior} = a/(a+b)$. 
+  - Recall, $\E(p|y)=\frac{y+a}{N+a+b}$, so the denominator is like the posterior sample size, $\implies N_{prior} = a+b.$.
+  - Solve for $a$ and $b$ via \vspace{-0.1in}
+    \begin{align*}
+      a &= N_{prior} \times m_{prior},\\
+      b &= N_{prior} \times (1 - m_{prior}).
+    \end{align*}
+  - *Intuition*: view $a$ and $b$ as pseudo-observations of successes and failures.
+- *Suggestion #2:* Choose $a$ and $b$ by specifying \emph{two quantiles} for $p$ associated with prior probabilities. 
+  - e.g., $\Pr(p<0.2) = 0.1 and \Pr(p > 0.6) = 0.1$. 
+  - Can find values of $a$ and $b$ numerically.
+  - In more complicated models, simulate. 
+
+## How to Specify Priors in General?
+
+**Theme:** What aspects of my model do I know something about? How do I encode that knowledge?\vspace{-0.1in}
+
+- **Containment:** Does my prior predictive distribution produce realistic datasets? 
+- **Caveat:** People who don't interrogate and justify their priors deserve what's coming to them. 
+  - Table of priors with references. 
+  - Prior predictive checks. 
+  - Sensitivity analyses. 
+
+## Issues with Uniformity 
+
+We might think that if we have little prior opinion about a parameter then we can simply assign a  \textcolor{red}{uniform prior}, i.e. a prior $p(\theta) \propto \mr{constant}.$
+
+There are two problems with this strategy: 
+
+- We can't be uniform on all scales since, if $\phi = g(\theta)$:
+$$\underbrace{p_\phi( \phi )}_{\text{Prior for }\phi}  = \underbrace{p_\theta( g^{-1}(\phi) )}_{\text{Prior for } \theta} \times  \underbrace{\left|\frac{d \theta}{d \phi} \right|}_{\text{Jacobian}}$$
+and so if $g(\cdot)$ is a nonlinear function, the Jacobian will be a function of $\phi$ and hence not uniform (more on this in a bit).
+- If the parameter is not on a finite range, an \textcolor{red}{improper} distribution will result (that is, the form will not integrate to 1). This can lead to all kinds of paradoxes (see e.g., Dawid, 1973). 
+- And importantly, improper priors are non-generative $\implies$ cannot interrogate their predictive distribution. 
+
+## Are Priors Really Uniform?
+
+- In the binomial example, $p\sim Unif(0,1)$ seems a natural choice.
+- But suppose we are going to model on the logistic scale so that
+$$\phi = \log\left( \frac{\theta}{1-\theta} \right)$$
+is a quantity of interest.
+-A uniform prior on $\theta$ produces the very non-uniform distribution on $\phi$.
+-Not being uniform on all scales is not a problem, and is correct probabilistically, but one should be aware of this characteristic.
+
+```{r logit_hist, fig.height=3}
+p = rbeta(1e5, 1, 1)
+ggplot(data = data.frame(logodds = log(p/(1-p))),
+       aes(logodds, y = ..density.., binwidth = 0.1)) + 
+  geom_histogram(colour = "white", fill = "grey40") + 
+  labs(x = expression(log(p/(1-p))), y = "Density", 
+       title = "Uniform(0,1) samples on the log-odds scale") + 
+  scale_x_continuous(limits = c(-10,10))
+```
+
+## Are Priors Really Uniform?
+
+- In the binomial example, $p\sim Unif(0,1)$ seems a natural choice.
+- But suppose we are going to model on the logistic scale so that
+$$\phi = \log\left( \frac{\theta}{1-\theta} \right)$$
+is a quantity of interest.
+-A uniform prior on $\theta$ produces the very non-uniform distribution on $\phi$.
+-Not being uniform on all scales is not a problem, and is correct probabilistically, but one should be aware of this characteristic.
+
+```{r expit_hist,  fig.height=3}
+expit = function(x) 1/(1+exp(-x))
+p_inv = expit(rnorm(1e5, 0, 1e3))
+ggplot(data = data.frame(probs = p_inv),
+       aes(probs, y = ..density..)) + 
+  geom_histogram(colour = "white", fill = "grey40") + 
+  labs(x = expression(exp(1/(1+exp(-x)))), y = "Density", 
+       title = "Inverse-logit of Normal(0,1000^2) samples") 
+```
+
+## Non-Conjugate Priors
+
+Suppose we want to model mortality on the log-odds scale, $\theta = \log(p/(1-p))$.
+
+Bayesian inference *always* starts with a model for the **joint distribution** of $\theta$ and $y$. \vspace{-0.1in}
+  
+  - The parameter in our model is $\theta$. 
+  - Lose conjugacy, no closed form for the posterior, now we rely on MCMC.
+  - Our MCMC targets the posterior $\pi(\theta|y)\propto \pi(\theta,y)=L(y|\theta)\pi(\theta).$
+  - If our prior is on the log-odds of death, we have no problems. It does not matter that $L(y|\theta) = Binomial(N, 1/(1+exp(-\theta)))$. 
+  - If our prior is on the probability of death but our model is defined in terms of the log-odds, we must include a Jacobian adjustment. 
+
+**Critical:** We must never lose sight of how our model is defined. 
+
+For more on this, see this [case study](https://mc-stan.org/users/documentation/case-studies/mle-params.html) by Bob Carpenter. 
+
+## Why Non-Conjugate Priors?
+
+- Information encoded naturally on other scales.
+- More flexible/natural representation using other types of distributions. 
+- Hierachical information. 
+- Compuational considerations.
+- Induce particular features in the posterior, e.g., sparsity.
+
+## Next week
+
+Linear regression. Watch lecture 3 (SmaRt). 
+
+We'll talk about:
+
+- Bayesian linear regression.
+- Weekly informative priors.
+
+## References
+
+P.A. Dawid, M. Stone, and J.V. Zidek. "Marginalization paradoxes in Bayesian and structural inference." *Journal of the Royal Statistical Society: Series B (Methodological)* 35.2 (1973): 189-213.
+
+A. Gelman, D.A. Simpson, and M. Betancourt. "The prior can often only be understood in the context of the likelihood." *Entropy* 19.10 (2017): 555.
+
+The PREVAIL II Writing Group and Multi-National PREVAIL II Study Team. "A randomized, controlled trial of ZMapp for Ebola virus infection." *The New England Journal of Medicine* 375.15 (2016): 1448.
+
+M.A. Proschan, L.E. Dodd, and D. Price. "Statistical considerations for a trial of Ebola virus disease therapeutics." *Clinical Trials* 13.1 (2016): 39-48.
+
+## 

@@ -130,7 +130,7 @@ At various points, we will be interested in the following distributions: \vspace
 - *Joint distribution*: $\pi(y,\theta) = f(y|\theta)\pi(\theta)$.
 - *Marginal distribution*: $\pi(y) = \int \pi(y,\theta) \rmd \theta = \int f(y|\theta)\pi(\theta)\rmd\theta$.
 - *Posterior distribution*: $\pi(\theta|y) = \frac{f(y|\theta)\pi(\theta)}{\pi(y)} \propto f(y|\theta)\pi(\theta)$. 
-- *Posterior predictive*: $f(\wtil{y}|y) = \int f(y|$.
+- *Posterior predictive*: $f(\wtil{y}|y) = \int f(\wtil{y}|\theta,y)\pi(\theta|y)\rmd\theta$.
 
 ## Bayesian inference
 The term $\pi(y) = \int f(y|\theta)\pi(\theta)\rmd\theta$ is a normalizing constant. \vspace{-0.15in}

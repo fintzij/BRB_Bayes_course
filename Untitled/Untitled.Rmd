@@ -1,0 +1,146 @@
+---
+title: "Presentation Title"
+shorttitle: "Short Title"
+subtitle: "Presentation Subtitle"
+author: "Jon Fintzi"
+short-author: "Jon Fintzi"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+short-date: '`r format(Sys.Date(), "%m/%d/%y")`'
+institute: | 
+  | National Institute of Allergy and Infectious Diseases
+  | National Institutes of Health
+short-institute: "Biostatistics Research Branch"
+department: "Biostatistics Research Branch" # Institute must be defined
+mainfont: Roboto
+monofont: Fira Mono
+fontsize: 14pt
+classoption: aspectratio = 1610
+output: 
+   youngmetro::metro_beamer
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+if (!require("tidyverse")) {
+  install.packages("tidyverse", dependencies = TRUE) 
+}
+library(tidyverse)
+```
+
+# Block Quote
+
+## Block Quote
+
+> Way too many questions you must think I trust you  
+> You searching for answers I do not know nothing
+
+# Ordered List
+
+## Ordered List
+- My favorite **R** packages:
+    1. **`ggplot2`**
+    2. **`dplyr`**
+    3. **`fivethirtyeight`**
+
+# Unordered List
+
+## Unordered List
+- Item 1
+- Item 2
+    - Item 2.1
+    - Item 2.2
+- Item 3
+
+# R Code
+
+## R Code
+Here is some **R** code
+
+\scriptsize
+```{r, eval = FALSE}
+# Load data
+data(ggplot2::txhousing)
+
+# Compare monthly home sales in Austin, TX (2006, 2009)
+tx_bubble <- txhousing %>% 
+  group_by(month, year) %>% 
+  filter(city == "Austin") %>% 
+  filter(year == "2006" | year == "2009") %>% 
+  summarize(sales = sum(sales))
+```
+
+# Equations
+
+## Equations
+- Calculate sample variance ($s^2$)
+
+\begin{equation}
+{s}^{2}=\frac{1}{n-1}\sum{{({X}_{i}-\bar{X})}^{2}}
+\label{eq:variance}
+\end{equation}
+
+# Images
+
+## Images
+
+\begin{figure}
+\begin{center}
+\includegraphics[width = 2.5in]{RStudio-Logo-Blue-Gray-250.png}
+\caption{RStudio Logo}
+\label{rslogo}
+\end{center}
+\end{figure}
+
+# R Figures
+
+## R Figures
+```{r, eval = TRUE, echo=FALSE}
+# Compare monthly home sales in Austin, TX (2006, 2009)
+tx_bubble <- txhousing %>% 
+  group_by(month, year) %>% 
+  filter(city == "Austin") %>% 
+  filter(year == "2006" | year == "2009") %>% 
+  summarize(sales = sum(sales))
+
+# Line plot of monthly home sales in Austin, TX, 2006 and 2009
+ggplot(data = tx_bubble, aes(x = month, y = sales, color = factor(year))) +
+  geom_point(size = 2.5) + geom_line() + 
+  scale_x_continuous(breaks = seq(1, 12, 1), name = "\nMonth") +
+  scale_y_continuous(limits = c(500, 3500), 
+    breaks = seq(500, 3500, 500), name = "Number of Sales\n") +
+  scale_color_manual(values = c("dodgerblue", "tomato"), 
+    name = "Year") + theme_classic() +
+  theme(axis.title = element_text(size = 13, 
+    face = "bold"), axis.text = element_text(size = 11)) + 
+  theme(legend.text = element_text(size = 11), 
+    legend.title = element_text(size = 13, face = "bold")) + 
+  theme(legend.position = "right")
+```
+
+# Links
+
+## Links
+- \url{http://aaronbaggett.com}
+- See also the image in Figure \ref{rslogo}
+
+# Blocks
+
+## Blocks
+\begin{block}{Block Title Here}
+	\begin{itemize}
+		\item point 1
+		\item point 2
+	\end{itemize}
+\end{block}
+
+## Blocks
+\begin{alertblock}{Alert Block}
+	Highlight important information.
+\end{alertblock}
+
+## Blocks
+\begin{exampleblock}{Example Block}
+	Examples can be good.
+\end{exampleblock}
+
+# Closing Slide
