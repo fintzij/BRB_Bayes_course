@@ -1,0 +1,454 @@
+---
+title: "PREVAIL II Analysis Continued"
+shorttitle: "PREVAIL II Analysis Continued"
+subtitle: "Bayesian workflow, sampling to summarize, and a first look at Stan"
+author: "Jon Fintzi"
+short-author: "Jon Fintzi"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+short-date: '`r format(Sys.Date(), "%m/%d/%y")`'
+institute: | 
+  | National Institute of Allergy and Infectious Diseases
+  | National Institutes of Health
+short-institute: "Biostatistics Research Branch"
+department: "Biostatistics Research Branch" 
+mainfont: Roboto Light
+monofont: Roboto Mono
+fontsize: 13pt
+classoption: aspectratio = 1610
+urlcolor: red
+output: 
+   youngmetro::metro_beamer
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, cache = FALSE, message = FALSE, warning = FALSE, fig.align = "center")
+if (!require("tidyverse")) {
+  install.packages("tidyverse", dependencies = TRUE) 
+}
+library(tidyverse)
+library(cowplot)
+library(bayesplot)
+library(latex2exp)
+library(ggplot2)
+library(rstan)
+theme_set(theme_minimal(base_family = "sans"))
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
+```
+
+## Taylor Swift Released a New Album
+
+**But I still like my oldies:**
+\vspace{-0.1in}
+
+- Bayesian inference *always* starts with a model for the **joint distribution** of $\theta$ and $y$:.\vspace{-0.1in} $$\pi(\theta, y) = f(y|\theta)\pi(\theta) = \pi(\theta|y)m(y).\vspace{-0.1in}$$
+- **Bayes rule** yields the **posterior distribution** \vspace{-0.1in}
+$$\pi(\theta|y) =  \frac{f(y,\theta)}{m(y)} = \frac{f(y|\theta)\pi(\theta)}{m(y)} \propto Likelihood\times Prior.\vspace{-0.1in}$$.
+- All of the information used in the *update* to our prior is encoded in the **likelihood**,\vspace{-0.1in} $$L(\mb{y}|\theta) = \prod_{i=1}^N f(y_i|y_{1,\dots,i-1}\theta).\vspace{-0.1in}$$ 
+- Analysis of PREVAIL II data with Beta-Binomial model:
+  - Conjugate prior $\implies$ analytical posterior. 
+  - Beta(1,1), i.e., Uniform(0,1), prior for probability of 28-day mortality. 
+  - Distributions of functionals of the posterior, e.g., assess evidence for ZMapp + oSOC more effective than oSOC alone: $\Pr(p_T<p_C | y_T,y_C)$. 
+
+## Lecture 10 of Statistical Rethinking
+
+Key takeaways:\vspace{-0.1in}
+
+- Language for modeling: \vspace{-0.1in}
+  \begin{align*}
+    y_i &\sim \mr{N}(\mu_i,\sigma^2), \\
+    \mu_i &= \beta_0 + \beta_1 x_{i,1} + \beta_p x_{i,p}, \\ 
+    \beta &\sim \mr{N}(0,10^2), \\ 
+    \sigma &\sim \mr{Exponential}(1), \\
+    x_i &\sim \mr{N}(0,1).
+  \end{align*}
+- Prior is full of lines. 
+- Posterior is full of lines. 
+- Prior and posterior also induce distributions over functionals, e.g., $\pi(R^2|\mb{y})$. 
+- Parameterization is important for interpretation, prior specification, and computation.
+  
+## This Week
+
+**Managing the elephant**\vspace{-0.1in}
+
+- Analysis of PREVAIL II with non-conjugate priors:
+  - Defining the model.
+  - Prior predictive simulations. 
+  - Posterior predictive distributions. 
+- MCMC via \texttt{Stan}. 
+
+## Motivating Example --- PREVAIL II Trial
+ 
+**Context:**\vspace{-0.1in}
+
+- 2014--2016 Ebola virus disease (EVD) outbreak in Guinea, Liberia, and Sierra Leone.
+- Over 28,000 suspected or confirmed cases and 11,000 fatalities. 
+- Urgent need to identify effective theraputics to reduce mortality. 
+
+**Partnership for Research on Ebola Virus in Liberia (PREVAIL) II trial:**\vspace{-0.1in}
+
+- Adaptive trial to determine the effectiveness of ZMapp, and possibly other agents, in reducing Ebola mortality. 
+- Primary endpoint: 28 day mortality on optimized standard of care (oSOC) vs. ZMapp + oSOC.
+- 72 patients enrolled at sites in Liberia, Sierra Leone, Guinea, and the US. \vspace{-0.1in}
+  - Overall mortality: 21/71 died (30%),
+  - SOC alone: 13/35 (37%),
+  - ZMapp + SOC: 8/36 (22%).
+- Modeled as Beta-Binomial with $p_T\sim \mr{Beta}(1,1),\ p_C \sim \mr{Beta}(1,1)$ (Proschan, 2016). 
+  - Beta dist. hyper-parameters interpretable as pseudo-observations. 
+  - $p_T|y_T\sim\mr{Beta}(9,29)$ and $p_C|y_C\sim\mr{Beta}(14, 23).$
+  
+## Analysis with Informed Priors
+
+Suppose we had information about the overall odds of death and differences in mortality.\vspace{-0.1in}
+
+\begin{align*}
+  \theta_{GM} &= \exp\left[\frac{1}{2}\left(\log\left(\frac{p_T}{1-p_T}\right) +\log \left(\frac{p_C}{1-p_C}\right)\right)\right] \sim \mr{LogNormal}(\mu_{GM},\sigma^2_{GM})\\
+  \theta_{OR} &= \exp\left[\log\left(\frac{p_T}{1-p_T}\right) - \log\left(\frac{p_C}{1-p_C}\right)\right] \sim \mr{LogNormal(0,\tau^2)}.
+\end{align*}
+
+- What's with all of the logs and exps? 
+  - Parameters defined multiplicatively are additive on the log scale. 
+  - Constraints on parameter space, e.g., $\theta_{OR}\in(0,\infty)$. 
+- Lose marginal interpretations of Beta priors. How to set hyperparameters for joint priors?
+- No more conjugacy, how to compute the posterior?
+
+## Rethinking the Model
+
+Bayesian inference **always** starts with a model for the joint distribution of parameters, $\bs{\theta}$, and data, $\mb{Y}$.\vspace{-0.1in}
+
+- Here, $\bs{\theta} = (\theta_{GM},\theta_{OR}).$
+- Relevant posterior: $\pi(\theta_{GM},\theta_{OR}|\mb{Y}) \propto L(\mb{Y}|\theta_{GM},\theta_{OR})\pi(\theta_{GM})\pi(\theta_{OR}).$
+  - $Y_T\sim \mr{Binomial}(N_T,p_T),\ Y_C\sim\mr{Binomial}(N_C,p_C).$
+  - $(p_T,p_C) = \left(\expit\left(\log(\theta_{GM}) + 0.5\log(\theta_{OR})\right), \expit\left(\log(\theta_{GM}) - 0.5\log(\theta_{OR})\right)\right).$
+  - **Very super-duper important:** $p_T$ and $p_C$ are functionals of the model parameters. They may be of interest. They are essential to the likelihood. They even have a distribution. But our model is defined in terms of $\theta_{GM}$ and $\theta_{OR}$.
+- What do our beliefs about $\theta_{GM}$ and $\theta_{OR}$ imply about $p_T,\ p_C$, and $\mb{Y}$? 
+
+```{r, prob_odds_transfcns, include = FALSE, echo = FALSE}
+
+logit = function(p) log(p/(1-p))
+expit = function(t) 1/(1 + exp(-t))
+
+to_est_scale = 
+    function(p1,p2) {
+        c(exp(0.5 * (logit(p1) + logit(p2))),
+          exp(logit(p1) - logit(p2)))
+    }
+
+from_est_scale = 
+    function(t1,t2) {
+        l1 = log(t1); l2 = log(t2)
+        c(expit(l1 + 0.5 * l2), expit(l1 - 1/2*l2))
+    }
+```
+    
+## Rethinking the Model
+
+What do our priors[^*] for $\theta_{GM}$ and $\theta_{OR}$ imply about $p_T,\ p_C$, and $\mb{Y}$? \vspace{-0.1in}
+
+- $\Pr(\theta_{GM} < 0.5) = 0.5$ and $\Pr(\theta_{GM} > 2) = 0.1$ $\implies \theta_{GM}\sim LogNormal(log(0.5), 1.08^2)$
+- $\Pr(\theta_{OR} < 0.25) = 0.1$ and $\Pr(\theta_{OR} > 4) = 0.1$ $\implies \theta_{OR}\sim LogNormal(0,1.08^2)$. 
+- **Interpretation:** the majority of people, roughly 2/3 half the time, will die within 28 days on oSOC. There is a non-negligible chance that ZMapp is much more, or much less, effective than oSOC alone, though we are agnostic to the direction of the effect. It is more likely, however, that the odds of 28 day mortality do not differ hugely. 
+- **Problem:** humans are really bad at interpretting probabilities (and hence calibrating priors using probabilities). We really only have three heuristics: not gonna happen, I dunno \shrug, and definitely gonna happen I'd bet my firstborn on it. 
+- Simulate to summarize the prior, *especially when fitting complex models*. 
+  
+[^*]: I'm just picking the probabilities that determine the following priors arbitrarily here for the sake of demonstration. Don't read too much into them.
+
+## Rethinking the Model
+
+What do our priors for $\theta_{GM}$ and $\theta_{OR}$ imply about $p_T,\ p_C$, and $\mb{Y}$? \vspace{-0.1in}
+
+- Prior predictive distribution: (1) draw $\wtil{\theta}_{GM}\sim \pi(\theta_{GM}),\ \wtil{\theta}_{OR}\sim\pi(\theta_{OR}) \implies(\wtil{p}_T,\wtil{p}_C)$, then (2) simulate outcomes $\wtil{Y}_T\sim \mr{Binomial}(N_T,\wtil{p}_T),\ \text{and } \wtil{Y}_C\sim\mr{Binomial}(N_C,\wtil{p}_C).$
+
+```{r binom_theta_priorpreds, fig.height=2, fig.width=5.9, fig.align="left", cache = T}
+
+theta_priors = 
+  data.frame(theta_GM = rlnorm(1e5, log(0.5), 1.08),
+             theta_OR = rlnorm(1e5, 0, 1.08^2),
+             p_t = 0,
+             p_c = 0,
+             y_t = 0,
+             y_c = 0)
+theta_priors[,3:4] = apply(theta_priors, 1, function(x) from_est_scale(x[1],x[2]))
+theta_priors[,5] = rbinom(nrow(theta_priors), 36, theta_priors[,3])
+theta_priors[,6] = rbinom(nrow(theta_priors), 36, theta_priors[,4])
+
+theta_pairs = 
+  mcmc_pairs(theta_priors[,c(1,2)], off_diag_fun = "hex", transformations = "log") 
+p_pairs = 
+  mcmc_pairs(theta_priors[,c(3,4)], off_diag_fun = "hex")
+
+plot_grid(theta_pairs, p_pairs)
+```
+
+## Rethinking the Model
+
+What do our priors for $\theta_{GM}$ and $\theta_{OR}$ imply about $p_T,\ p_C$, and $\mb{Y}$? \vspace{-0.1in}
+
+- Prior predictive distribution: (1) draw $\wtil{\theta}_{GM}\sim \pi(\theta_{GM}),\ \wtil{\theta}_{OR}\sim\pi(\theta_{OR}) \implies(\wtil{p}_T,\wtil{p}_C)$, then (2) simulate outcomes $\wtil{Y}_T\sim \mr{Binomial}(N_T,\wtil{p}_T),\ \text{and } \wtil{Y}_C\sim\mr{Binomial}(N_C,\wtil{p}_C).$
+- Summary statistics of interest (90% prior predictive interval): total deaths (`r round(quantile(rowSums(theta_priors[,5:6]), 0.05))`, `r round(quantile(rowSums(theta_priors[,5:6]), 0.95))`) , deaths per arm (`r round(quantile(unlist(theta_priors[,5:6]), 0.05))`, `r round(quantile(unlist(theta_priors[,5:6]), 0.95))`), absolute difference in deaths per arm (`r round(quantile(abs(theta_priors[,5] - theta_priors[,6]), 0.05))`, `r round(quantile(abs(theta_priors[,5] - theta_priors[,6]), 0.95))`). 
+
+```{r binom_cases_priorpreds, fig.height=1.5, fig.width=4}
+
+y_pairs = 
+  mcmc_hist(theta_priors[,c(5,6)], binwidth = 1) 
+y_pairs
+
+```
+
+## Rethinking the Model
+
+Suppose we had stuck with $p_T\sim \mr{Beta}(1,1),\ p_C\sim \mr{Beta}(1,1)$. What are the induced priors on $\theta_{GM},\ \theta_{OR}$, and $\mb{Y}$?
+
+```{r binom_theta_priorpreds_unif, fig.height=2, fig.width=5.9, fig.align="left", cache = T}
+
+theta_priors_unif = 
+  data.frame(theta_GM = 0,
+             theta_OR = 0,
+             p_t = runif(1e5),
+             p_c = runif(1e5),
+             y_t = 0,
+             y_c = 0)
+theta_priors_unif[,1:2] = apply(theta_priors_unif, 1, function(x) to_est_scale(x[3],x[4]))
+theta_priors_unif[,5] = rbinom(nrow(theta_priors_unif), 36, theta_priors_unif[,3])
+theta_priors_unif[,6] = rbinom(nrow(theta_priors_unif), 36, theta_priors_unif[,4])
+
+theta_pairs_unif = 
+  mcmc_pairs(theta_priors_unif[,c(1,2)], off_diag_fun = "hex", transformations = "log") 
+p_pairs_unif = 
+  mcmc_pairs(theta_priors_unif[,c(3,4)], off_diag_fun = "hex")
+
+plot_grid(theta_pairs_unif, p_pairs_unif)
+```
+
+## Rethinking the Model
+
+Suppose we had stuck with $p_T\sim \mr{Beta}(1,1),\ p_C\sim \mr{Beta}(1,1)$. What are the induced priors on $\theta_{GM},\ \theta_{OR}$, and $\mb{Y}$?
+
+- Summary statistics of interest (90% prior predictive interval): total deaths (`r round(quantile(rowSums(theta_priors_unif[,5:6]), 0.05))`, `r round(quantile(rowSums(theta_priors_unif[,5:6]), 0.95))`) , deaths per arm (`r round(quantile(unlist(theta_priors_unif[,5:6]), 0.05))`, `r round(quantile(unlist(theta_priors_unif[,5:6]), 0.95))`), absolute difference in deaths per arm (`r round(quantile(abs(theta_priors_unif[,5] - theta_priors_unif[,6]), 0.05))`, `r round(quantile(abs(theta_priors_unif[,5] - theta_priors_unif[,6]), 0.95))`). 
+
+```{r binom_cases_priorpreds_unif, fig.height=1.5, fig.width=4}
+
+y_pairs_unif = 
+  mcmc_hist(theta_priors_unif[,c(5,6)], binwidth = 1) 
+y_pairs_unif
+
+```
+## MCMC for Non-conjugate Priors
+
+Posterior distribution no longer analytically available. Let's do that MCMC!\vspace{-0.1in}
+
+To specify the model in \texttt{Stan}, we need to define (at a minimum)\vspace{-0.1in}
+
+- *Data*: $\mb{N},\ \mb{Y}$,
+- *Parameters*: $\theta_{GM},\theta_{OR}$,
+- *Model*: Binomial likelihood, log-normal priors. 
+
+Optionally, we can also specify\vspace{-0.1in}
+
+- *User-defined functions*: e.g., for manipulating data, transforming parameters,
+- *Transformed data*: e.g., centered covariates,
+- *Transformed parameters*: $p_T,\ p_C$,
+- *Generated quantities*: functionals of parameters, posterior predictive samples.
+
+Each of these is defined in a block of \texttt{Stan} code, which is compiled into \texttt{C++}.
+
+\texttt{Stan} has incredible [\textcolor{blue}{documentation}](https://mc-stan.org/users/documentation/) and an active (and very supportive) [\textcolor{blue}{user community}](https://mc-stan.org/community/) that you can lean on if you ever need help with a model.
+
+## Let's do that MCMC!
+
+**Data:** \vspace{-0.1in}
+
+- The data, but also any quantities that are needed to instatiate objects, e.g., dimensions of matrices.
+- Objects here are fixed, no random variables declared here.
+
+```{stan standat, output.var = "standat", echo = TRUE, eval=FALSE}
+data {
+  int<lower=0> N[2]; // sample sizes per arm
+  int<lower=0> y[2]; // numbers of deaths per arm
+}
+```
+
+## Let's do that MCMC!
+
+**Parameters:** \vspace{-0.1in}
+
+- Correspond to the variables being sampled in the MCMC. 
+- Constraints for safety and to tell \texttt{Stan} how to transform to avoid boundaries of parameter space.
+- \texttt{Stan} defines an unnormalized log-probability over unconstrained parameters and adds Jacobians automatically. 
+
+```{stan stanpars, output.var = "stanpars", echo = TRUE, eval = FALSE}
+parameters {
+  real<lower=0> theta_GM; // geometric mean odds of death
+  real<lower=0> theta_OR; // odds ratio
+}
+transformed parameters {
+  real<lower=0,upper=1> probs[2]; 
+  probs[1] = inv_logit(log(theta_GM) + 0.5 * log(theta_OR)); // p_T
+  probs[2] = inv_logit(log(theta_GM) - 0.5 * log(theta_OR)); // p_C
+}
+```
+
+## Let's do that MCMC!
+
+**Model:** \vspace{-0.1in}
+
+- Sampling statements define contributions to the log-posterior. 
+- Includes both priors and likelihood. 
+- If declare priors for transformed parameters, need to manually add a Jacobian adjustment.
+
+```{stan stanmod, output.var = "stanmod", echo = TRUE, eval = FALSE}
+model {
+  y ~ binomial(N, probs);               // likelihood
+  theta_GM ~ lognormal(log(0.5), 1.08); // prior for theta_GM
+  theta_OR ~ lognormal(0, 1.08);        // prior for theta_OR
+}
+```
+
+## Let's do that MCMC!
+
+**Generated quantities:**
+
+- Posterior predictives and derived quantities computed online and returned in MCMC output.
+- Later, compute log-likelihoods for model comparison. 
+
+```{stan stangen, output.var = "stanmod", echo = TRUE, eval = FALSE}
+generated quantities {
+  int y_pp[2] = binomial_rng(N, probs); // simulate from posterior predictive
+  real rr_pp = probs[1] / probs[2];     // relative risk
+  real rd_pp = probs[1] - probs[2];     // risk difference
+}
+```
+
+## Let's do that MCMC!
+
+Running the model in R: \vspace{-0.1in}
+
+- Write \texttt{Stan} code into a \texttt{.stan} file (RStudio: File > New File > Stan File). 
+- Probably something similar in Python, I dunno. 
+- Compile and run as follows:
+
+```{r prevailmod, echo =TRUE, cache = TRUE}
+prevailmod = stan_model(file = "prevailmod.stan") # compile model
+data = list(N = c(ZMapp = 36, oSOC = 35),         # numbers of participants
+            y = c(ZMapp = 8, oSOC = 13))          # deaths per arm
+prevailfit = sampling(object = prevailmod,        # compiled model
+                      data   = data,              # data
+                      chains = 5,                 # number of chains (>1 !!!!)
+                      iter   = 2e3)               # number of iterations
+```
+
+## MCMC Output
+
+\texttt{Stan} produces correlated MCMC samples from the posterior via Hamiltonian Monte Carlo. 
+
+```{r stan_traces, fig.height=2, fig.width=5}
+color_scheme_set("mix-blue-red")
+prevailsamps = extract(prevailfit)
+mcmc_trace(prevailfit, pars = c("theta_GM", "theta_OR"), 
+           transformations = list(theta_GM = "log", theta_OR = "log")) + 
+  labs(title = "Traceplots of model parameters", subtitle = "Fuzzy caterpilars, totes adorbs!")
+```
+
+## MCMC Diagnostics
+
+Lots of diagnostics, [\textcolor{blue}{always check your diagnostics}](http://mc-stan.org/misc/warnings.html). More [\textcolor{blue}{here}](https://mc-stan.org/rstan/reference/stan_plot_diagnostics.html) and in the \texttt{Stan} reference manual. 
+
+```{r prevaildiags}
+get_sampler_params(prevailfit, inc_warmup = FALSE)[[1]][1:5,]
+```
+
+
+## Results
+
+Marginal summaries[^**]:\vspace{-0.15in}
+
+```{r stan_output, fig.height=3.5}
+summary(prevailfit)$summary[c(1:4,7:8),]
+```
+[^**]: In Beta-Binomial model with Uniform(0,1) priors: $p_T = 0.23 (0.12, 0.38);\ p_C = 0.38 (0.23, 0.54);\ RD = -0.14 (-0.34, 0.06); RR = 0.62 (0.29, 1.24); OR = 0.50(0.18, 1.36).$
+
+## Results
+
+Posterior distributions of model parameters.
+
+```{r prevail_posts, fig.height=2.5, fig.width = 5}
+color_scheme_set("blue")
+theta_gm_post = 
+  mcmc_hist(prevailfit, pars = "theta_GM", freq = FALSE, transformations = "log") + 
+  geom_line(data = data.frame(x = seq(-2.2,0.1,by=0.01), 
+                              y = dnorm(seq(-2.2,0.1,by=0.01), log(0.5), 1.08)),
+            aes(x=x,y=y), colour = "darkgreen", linetype = "dashed", size = 1) + 
+  labs(x = expression(log(theta[GM])), y = "Density", 
+       title = "Parameter posteriors (histograms) and priors (dashed lines)")
+
+theta_or_post = 
+  mcmc_hist(prevailfit, pars = "theta_OR", freq = FALSE, transformations = "log") + 
+  geom_line(data = data.frame(x = seq(-2.75, 1.25,by=0.01), 
+                              y = dnorm(seq(-2.75, 1.25,by=0.01), 0, 1.08)),
+            aes(x=x,y=y), colour = "darkgreen", linetype = "dashed", size = 1) + 
+  labs(x = expression(log(theta[OR])), y = "Density", 
+       title = "") 
+
+plot_grid(theta_gm_post, theta_or_post)
+```
+
+
+## Results
+
+Can do better than marginal summaries, we have access to the *joint* posterior!
+
+```{r prevail_pairs, fig.height=3, fig.width=5}
+mcmc_pairs(prevailfit, regex_pars = "theta", off_diag_fun = "hex", trans = "log")
+```
+
+## Posterior Predictive Distribution
+
+We can sample from the posterior predictive distribution by iteratively drawing $\wtil{\theta}_{post}\sim \pi(\theta|y)$, then simulating $\wtil{Y}|\wtil{\theta}_{post} \sim \mr{Binomial}(N,\wtil{p}_{post}).$
+
+Suppose we want to predict 28 day mortality for 10 new individuals in each group. 
+
+
+```{r pressure, echo=FALSE, out.width = '50%'}
+## code to generate the plot
+# unif_posts_T = rbeta(5e3, 9, 29)
+# unif_posts_C = rbeta(5e3, 13, 23)
+# preds = 
+#   data.frame(grp = rep(c("ZMapp", "oSOC"), each = 5e3),
+#              method = rep(c("MLE", "Bayes, informed", "Bayes, uniform"), each = 1e4),
+#              pred = c(rbinom(5e3, 10, 8/36), rbinom(5e3, 10, 13/35),
+#                       unlist(extract(prevailfit, pars = "y_pp")),
+#                       rbinom(5e3, 10, unif_posts_T), rbinom(5e3, 10, unif_posts_C)))
+# 
+# predplot = 
+#   ggplot(preds, aes(pred, y = ..density.., group = method, fill = method)) + 
+#   geom_histogram(binwidth = 1, colour = "grey40") +
+#   scale_fill_brewer("",type = "qual", palette = 5) + 
+#   scale_x_continuous(breaks = 0:10) + 
+#   theme_minimal() + 
+#   labs(x = "Deaths in 28 days for 10 new participants per group", y = "Density", 
+#        title = "Posterior predictive distribution") + 
+#   facet_grid(method~grp) + 
+#   theme(legend.position = "none") 
+
+knitr::include_graphics("predplot.pdf")
+```
+
+## Next time
+
+No meeting next week (Labor Day). In two weeks we'll talk about linear regression (for real this time). 
+
+  - Setting weakly (not weekly) informative priors.
+  - Assessing failure modes of different priors.
+  - More Stan.
+
+Watch/rewatch lecture 3 and first half of 4 (SmaRt). 
+
+## References
+
+M. Betancourt "Calibrating model-based inferences and decisions." arXiv preprint arXiv:1803.08393 (2018).
+
+M. Betancourt "Toward a principled Bayesian workflow." \url{https://betanalpha.github.io/assets/case_studies/principled_bayesian_workflow.html} (2018). 
+
+J. Gabry, et al. "Visualization in Bayesian workflow." *Journal of the Royal Statistical Society: Series A (Statistics in Society)* 182.2 (2019): 389-402.
+
+## 
