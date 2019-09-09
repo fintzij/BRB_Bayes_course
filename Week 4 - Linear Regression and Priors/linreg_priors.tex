@@ -1175,17 +1175,12 @@ wide.
 
 \end{frame}
 
-\begin{frame}[fragile]{Poorly Informed Regression: Analysis with Weakly
+\begin{frame}{Poorly Informed Regression: Analysis with Weakly
 Informative Priors}
 \protect\hypertarget{poorly-informed-regression-analysis-with-weakly-informative-priors-4}{}
 
 Leave-one-out posterior predictive distributions are still wide, but
-perform better (\(ELPD_{WI} - ELPD_{NI} \approx 0.4 \pm 0.2\)).
-
-\begin{verbatim}
-## elpd_diff        se 
-##      -0.3       0.1
-\end{verbatim}
+perform better (\(ELPD_{WI} - ELPD_{NI} \approx 0.3 \pm 0.1\)).
 
 \begin{figure}
 
@@ -1358,10 +1353,11 @@ Some key takeaways:
   weakly informed models.
 \item
   But remember, our goal is to identify scales that are consistent with
-  our prior beliefs, not exact values. - \textbf{Big warning:} Not
-  necessarily a good idea to look at your data and pick the prior to
-  look like it. We don't know as much as we think. Remember, it was
-  hubris that killed the king.
+  our prior beliefs, not exact values.
+\item
+  \textbf{Big warning:} Not necessarily a good idea to look at your data
+  and pick the prior to look like it. We don't know as much as we think.
+  Remember, it was hubris that killed the king.
 \item
   Not the only way to come up with priors, but thinking generatively
   about how parts of the model interact can help diagnose subtle issues

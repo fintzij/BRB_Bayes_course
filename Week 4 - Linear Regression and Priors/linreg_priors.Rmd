@@ -222,7 +222,7 @@ pp_check(stupid_mod_post, nsamples = 100) +
 
 Leave-one-out posterior predictive distributions (\texttt{loo} package, more [\textcolor{red}{here}](https://avehtari.github.io/modelselection/)) indicate good predictive performance.
 
-```{r ht_wt_stupid_postpred_loo, fig.height=2, fig.width=3, fig.cap="Observed heights and leave-one-out 95 percent posterior predictive intervals."}
+```{r ht_wt_stupid_postpred_loo, fig.height=2, fig.width=4.5, fig.cap="Observed heights and leave-one-out 95 percent posterior predictive intervals."}
 
 hrep1 = posterior_predict(stupid_mod_post)
 loo1 = loo(stupid_mod_post, save_psis = T)
@@ -431,10 +431,10 @@ plot_grid(post_incpt_wi, post_slope_wi, post_sigma_wi, ncol = 3, rel_widths = c(
 
 ## Poorly Informed Regression: Analysis with Weakly Informative Priors
 
-Leave-one-out posterior predictive distributions are still wide, but perform better ($ELPD_{WI} - ELPD_{NI} \approx 0.4 \pm 0.2$).
+Leave-one-out posterior predictive distributions are still wide, but perform better ($ELPD_{WI} - ELPD_{NI} \approx 0.3 \pm 0.1$).
 
-```{r wi_vs_diff_loocomp, cache = T}
-loo::compare(loo(wi_mod_sub_post, reloo = T), loo(stupid_mod_sub_post, reloo = T))
+```{r wi_vs_diff_loocomp, cache = T, include = F}
+# loo::compare(loo(wi_mod_sub_post, reloo = T), loo(stupid_mod_sub_post, reloo = T))
 ```
 
 
@@ -607,7 +607,8 @@ Some key takeaways:
   4. Wash-rinse-repeat. 
 - We could have done more at each step, but we only had an hour. Read about robustifying Bayesian workflow [\textcolor{red}{here}](https://betanalpha.github.io/assets/case_studies/principled_bayesian_workflow.html).
 - Incorporating information about *scales* can help regularize weakly informed models. 
-- But remember, our goal is to identify scales that are consistent with our prior beliefs, not exact values. - **Big warning:** Not necessarily a good idea to look at your data and pick the prior to look like it. We don't know as much as we think. Remember, it was hubris that killed the king. 
+- But remember, our goal is to identify scales that are consistent with our prior beliefs, not exact values.
+- **Big warning:** Not necessarily a good idea to look at your data and pick the prior to look like it. We don't know as much as we think. Remember, it was hubris that killed the king. 
 - Not the only way to come up with priors, but thinking generatively about how parts of the model interact can help diagnose subtle issues that would otherwise have gone unnoticed.
 
 ## References
