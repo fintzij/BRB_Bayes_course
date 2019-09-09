@@ -1,0 +1,623 @@
+---
+title: "Linear Regression, Priors, and Model Selection"
+shorttitle: "Linear Regression, Priors, and Model Selection"
+subtitle: ""
+author: "Jon Fintzi"
+short-author: "Jon Fintzi"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+short-date: '`r format(Sys.Date(), "%m/%d/%y")`'
+institute: | 
+  | National Institute of Allergy and Infectious Diseases
+  | National Institutes of Health
+short-institute: "Biostatistics Research Branch"
+department: "Biostatistics Research Branch" 
+mainfont: Roboto Light
+monofont: Roboto Mono
+fontsize: 13pt
+classoption: aspectratio = 1610
+urlcolor: red
+output: 
+   youngmetro::metro_beamer
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      cache = FALSE, 
+                      message = FALSE, 
+                      warning = FALSE, 
+                      fig.align = "center",
+                      dev = 'pdf')
+if (!require("tidyverse")) {
+  install.packages("tidyverse", dependencies = TRUE) 
+}
+library(tidyverse)
+library(GGally)
+library(extraDistr)
+library(cowplot)
+library(bayesplot)
+library(latex2exp)
+library(ggplot2)
+library(brms)
+library(loo)
+library(rstan)
+theme_set(theme_minimal(base_family = "sans"))
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
+```
+
+## Dead and Company are Playing in Hampton, VA on 11/8
+
+**Nothing like Bayesian modeling to make you feel alive!** Last time, we talked about:
+\vspace{-0.1in}
+
+- Bayesian inference *always* starts with a model for the **joint distribution** of $\theta$ and $y$:.\vspace{-0.1in} $$\pi(\theta, y) = f(y|\theta)\pi(\theta) = \pi(\theta|y)m(y).\vspace{-0.1in}$$
+- **Bayes rule** yields the **posterior distribution** \vspace{-0.1in}
+$$\pi(\theta|y) =  \frac{f(y,\theta)}{m(y)} = \frac{f(y|\theta)\pi(\theta)}{m(y)} \propto Likelihood\times Prior.\vspace{-0.1in}$$.
+- All of the information used in the *update* to our prior is encoded in the **likelihood**,\vspace{-0.1in} $$L(\mb{y}|\theta) = \prod_{i=1}^N f(y_i|y_{1,\dots,i-1}\theta).\vspace{-0.1in}$$ 
+- Re-Analysis of PREVAIL II data with non-conjugate priors:
+  - Prior distributions for geometric mean log odds of 28 day mortality and ratio of the odds of death in 28 days for ZMapp vs. oSOC.  
+  - Posteriors are distributions of these *parameters* given the data, updated under binomial likelihood. 
+  - First look at \texttt{Stan}. 
+  
+## Lectures 3-4 of Statistical Rethinking
+
+Briefly: 
+
+- Probability statements that describe key aspects of the data generating mechanism.
+- Language for modeling: \vspace{-0.1in}
+  \begin{align*}
+    y_i &\sim \mr{N}(\mu_i,\sigma^2), \\
+    \mu_i &= \beta_0 + \beta_1 x_{i,1} + \beta_p x_{i,p}, \\ 
+    \beta &\sim \mr{N}(0,10^2), \\ 
+    \sigma &\sim \mr{Exponential}(1), \\
+    x_i &\sim \mr{N}(0,1).
+  \end{align*}
+- Here, the prior is full of lines, so too is the posterior is full of lines. 
+- Nothing special about lines, e.g., could use polynomials, splines, etc. Nothing special about linearity either. 
+- Bayesian framework takes a generative model with lots of uncertainty as input, learns which configurations of parameters are consonant with the data, and returns a generative model with (hopefully) less uncertainty.
+
+## Common Hangups
+
+Probably the two most common hangups are
+
+1. How to choose priors? What happens if the priors are "wrong"? 
+2. Small world model, big world data.
+
+Today, we'll talk about
+
+1. How the shape or a prior affects the posterior. 
+2. Some principles for prior selection. 
+3. Good practices for workflow as they relate to model building and validation.
+
+## Example - Linear Regression for Height vs. Weight 
+
+(Similar to Statistical Rethinking, lecture 3) Suppose we want to understand how height predicts weight in a sample of 241 adult women. 
+
+- Simulate: $h_i = 150 + 0.55 w_i + \epsilon_i,\ \epsilon_i\sim N(0,4.5^2).$
+- Straightforward, probably won't matter much what we do. 
+
+```{r ht_wt_plot1, fig.width=2.5, fig.height=1.5}
+library(lgrdata)
+data("howell")
+set.seed(52787)
+dat_full = subset(howell, age>=18 & sex == "female")
+dat_full$height = 150 + 0.55 * (dat_full$weight - mean(dat_full$weight)) + rnorm(nrow(dat_full), 0, 4.5)
+dat_full$obs = 0
+dat_full$obs[sample(nrow(dat_full), 10)] = 1
+dat_sub = subset(dat_full, obs == 1)
+
+ggplot(dat_full, aes(x = weight, y = height)) +
+  geom_point(colour = "darkblue") +
+  labs(x = "Weight (kg)", y = "Height (cm)")
+```
+
+## Example - Linear Regression for Height vs. Weight 
+
+Model with "non-informative" priors[^1]: 
+
+$$\begin{aligned}
+h_i &\sim Normal(\mu_i, \sigma^2)\\ 
+\mu_i &= \alpha + \beta(w_i - \bar{w}) \\
+\alpha &\sim Normal(160, 160^2) \\
+\beta &\sim Normal(0, 100^2) \\
+\sigma &\sim Half-Cauchy(10)
+\end{aligned}$$
+
+I'll fit this using the \texttt{brms} package, which generates \texttt{Stan} 
+code, compiles, and fits the model. Take a look at the raw Rmarkdown file if 
+you're interested in seeing the code.  
+
+[^1]: Stupid priors.
+
+## Example - Linear Regression for Height vs. Weight 
+
+Prior predictive draws are clearly absurd, but it's a really simple model with a fair amount of data so let's just pretend to not care. 
+
+```{r ht_wt_priorfit, cache = TRUE}
+
+stupid_mod_prior = 
+  brm(formula = height ~ weight, 
+      family = gaussian,
+      data = dat_full,
+      prior = c(prior("normal(160,160)", class = "Intercept"),
+                prior("normal(0, 100)", coef = "weight"),
+                prior("cauchy(0,10)", class = "sigma")),
+      save_all_pars = TRUE,
+      sample_prior = "only")
+
+prior_fits = marginal_effects(stupid_mod_prior, method = "fitted", spaghetti = TRUE, nsamples = 100)
+```
+
+```{r ht_wt_priorpred_stupid, fig.width=3, fig.height=2, fig.cap= "Prior distribution"}
+marginal_effects(stupid_mod_prior, method = "fitted", spaghetti = TRUE, nsamples = 100)
+```
+
+## Example - Linear Regression for Height vs. Weight 
+
+```{r ht_wt_fit_stupid, cache = TRUE}
+
+stupid_mod_post = 
+  brm(formula = height ~ weight, 
+      family = gaussian,
+      data = dat_full,
+      prior = c(prior("normal(160,160)", class = "Intercept"),
+                prior("normal(0, 100)", coef = "weight"),
+                prior("cauchy(0,10)", class = "sigma")),
+      save_all_pars = TRUE)
+
+## Uncomment to extract Stan code 
+# stancode(stupid_mod_post)
+
+```
+
+But, the posterior seems to shake out OK. 
+
+```{r ht_wt_post_me, fig.height=2, fig.width=3, fig.cap="Posterior distribution of regression lines."}
+
+marginal_effects(stupid_mod_post, method = "fitted", spaghetti = T, nsamples = 100) 
+
+```
+
+## Example - Linear Regression for Height vs. Weight 
+
+Posterior distributions of model parameters seem reasonable and credible intervals contain the true values. 
+
+```{r ht_wt_post_stupid, fig.height=1.5, fig.width=5.5, fig.cap="Parameter posteriors and 95 percent credible intervals."}
+
+post_incpt_stupid = 
+  mcmc_areas(stupid_mod_post, pars = c("temp_Intercept"), prob = 0.95) + 
+  scale_y_discrete(labels = "", expand = c(0,0)) +
+  labs(title = "Intercept", y = "Density") + 
+  # scale_x_continuous(breaks = 149:151, limits = c(148.5, 151.1)) + 
+  geom_vline(xintercept = 150, colour = "darkred") + 
+  theme_minimal() 
+post_slope_stupid = 
+  mcmc_areas(stupid_mod_post, pars = c("b_weight"), prob = 0.95) + 
+  scale_y_discrete(labels = "", expand = c(0,0)) +
+  geom_vline(xintercept = 0.55, colour = "darkred") + 
+  labs(title = "Slope") + 
+  theme_minimal() 
+post_sigma_stupid = 
+  mcmc_areas(stupid_mod_post, pars = c("sigma"), prob = 0.95) + 
+  scale_y_discrete(labels = "", expand = c(0,0)) +
+  geom_vline(xintercept = 4.5, colour = "darkred") + 
+  labs(title = "Error std. dev.") + 
+  theme_minimal()
+
+plot_grid(post_incpt_stupid, post_slope_stupid, post_sigma_stupid, ncol = 3, rel_widths = c(1.25,1,1))
+```
+
+## Example - Linear Regression for Height vs. Weight 
+
+Observed data are contained within the posterior predictive distributions.
+
+```{r ht_wt_stupid_postpred, fig.height=2, fig.width=3, fig.cap="Density plots of observed heights and draws from the posterior predictive distribution."}
+
+pp_check(stupid_mod_post, nsamples = 100) + 
+  labs(x = "Height (cm)") + 
+  scale_x_continuous(limits = c(125, 175))
+```
+
+## Example - Linear Regression for Height vs. Weight 
+
+Leave-one-out posterior predictive distributions (\texttt{loo} package, more [\textcolor{red}{here}](https://avehtari.github.io/modelselection/)) indicate good predictive performance.
+
+```{r ht_wt_stupid_postpred_loo, fig.height=2, fig.width=3, fig.cap="Observed heights and leave-one-out 95 percent posterior predictive intervals."}
+
+hrep1 = posterior_predict(stupid_mod_post)
+loo1 = loo(stupid_mod_post, save_psis = T)
+psis1 = loo1$psis_object
+lw1 = weights(psis1)
+
+ppc_loo_intervals(y = dat_full$height, yrep = hrep1, psis_object = psis1, prob_outer = 0.95)
+
+```
+
+## We Escaped the Zombies but They Ate the Dog
+
+In this case, we had a lot of data to estimate a fairly strong signal. 
+
+*Bernstein-von Mises (BvM) theorem*: under some conditions, the posterior will look asymptotically like the sampling distribution of a maximum likelihood estimator, i.e., multivariate normal with mean at the true population parameter, $\bs{\theta}_0$, and covariance matrix $\bs{\Sigma} = \frac{1}{n}I(\bs{\theta}_0)^{-1}$. 
+
+- See Section 2.2.5 [\textcolor{red}{here}](http://www.statslab.cam.ac.uk/~nickl/Site/__files/stat2013.pdf) for a technical discussion. 
+- Related paper by Charlie Geyer on "no-n" asymptotics of MLEs, available [\textcolor{red}{here}](http://www.stat.umn.edu/geyer/lecam/simple.pdf). 
+- Gelman 2017 (see refs) on prior selection.
+- From the [\textcolor{red}{Wiki}]({https://en.wikipedia.org/wiki/Bernstein%E2%80%93von_Mises_theorem}), quoting A. W. F. Edwards, "It is sometimes said...that the choice of prior distribution is unimportant in practice...when there are moderate amounts of data. The less said about this 'defence' the better."
+
+## We Escaped the Zombies but They Ate the Dog
+
+Dan Simpson summarizes the problem in an epic rant, [\textcolor{red}{Asymptotically we're all dead}](https://statmodeling.stat.columbia.edu/2017/11/27/asymptotically-we-are-all-dead/):
+
+- There are some important assumptions needed for BvM:
+  1. The MLE is consistent for the true population parameter.
+  2. The model has a fixed, finite number of parameters.
+  3. The true parameter $\theta_0$ lies on the interior of the parameter space. 
+  4. The prior must be non-zero in a neighborhood around $\theta_0$. 
+  5. The log-likelihood must be smooth. 
+- Incredibly difficult to apply BvM in practice. 
+  - Need independent replications of the same experiment, not enough to just have a lot of data. 
+  - Assumptions unlikely to hold in settings where we'd want to use penalized estimators or when we have an infinite dimensional parameter. 
+  - Most datasets are not instantaneous snapshots of a stationary process.
+
+**Moral of the story:** The zombies could have bitten Fido and you'd never know until it's too late. 
+
+## Poorly Informed Regression 
+
+Suppose we only had height-weight measurements for 5 women instead of on 241. How will the prior affect our inferences?\vspace{-0.1in}
+
+- Obviously, we expect a ton of uncertainty in the posterior. Might seem like a silly example, how far can we really get with only ten measurements?
+- The things that go wrong in this setting are exactly what can go wrong without our realizing it in more complex settings. 
+- We are going through this exercise to understand the failure modes of different priors when the priors are not properly calibrated to the scale of the data. 
+- When the model fails, how does it fail?
+
+```{r plot_dat_sub, fig.height=1.5, fig.width=3.5}
+ggplot(dat_full, aes(x = weight, y = height, alpha = as.factor((obs + 0.25)/2))) +
+  geom_point(fill = "darkblue", colour = "darkblue") +
+  scale_alpha_discrete("", labels = c("Not observed", "Observed")) + 
+  labs(x = "Weight (kg)", y = "Height (cm)")
+```
+
+## Poorly Informed Regression: Analysis with "Non-informative" Priors
+
+```{r ht_wt_fit_poorlyinformed, cache = TRUE}
+
+stupid_mod_sub_post = 
+  brm(formula = height ~ weight, 
+      family = gaussian,
+      data = dat_sub,
+      prior = c(prior("normal(160,160)", class = "Intercept"),
+                prior("normal(0, 100)", coef = "weight"),
+                prior("cauchy(0,10)", class = "sigma")),
+      save_all_pars = TRUE)
+
+```
+
+
+The posterior contains associations that don't make sense. 
+
+```{r ht_wt_post_me2, fig.height=2, fig.width=3, fig.cap="Posterior distribution of regression lines."}
+
+marginal_effects(stupid_mod_sub_post, method = "fitted", spaghetti = T, nsamples = 100) 
+
+```
+
+## Poorly Informed Regression: Analysis with "Non-informative" Priors
+
+Leave-one-out posterior predictive distributions (\texttt{loo} package) indicate poor predictive performance.
+
+```{r ht_wt_stupid_postpred_loo2, fig.height=2, fig.width=3, fig.cap="Observed heights and leave-one-out 95 percent posterior predictive intervals."}
+hrep2 = posterior_predict(stupid_mod_sub_post)
+loo2 = loo(stupid_mod_sub_post, save_psis = T)
+psis2 = loo2$psis_object
+lw2 = weights(psis2)
+
+ppc_loo_intervals(y = dat_sub$height, yrep = hrep2, psis_object = psis2, prob_outer = 0.95)
+
+```
+
+
+## Poorly Informed Regression: Analysis with "Non-informative" Priors
+
+**Failure mode of diffuse priors in weak data settings:** 
+
+- Posterior contains implausible values. 
+- Poor predictive performance. 
+
+Uncontroversial opinions:
+
+- We could have ruled out negative associations and extreme associations by choosing coherent priors.
+- We should still have a lot of uncertainty, no reason to pretend that we have strong information. It would be fine for the prior to be dominant in the posterior.
+- Our uncertainty should, at least, be constrained to coherent ranges that could plausibly have produced the data. 
+- For more examples, see Gabry (2019). 
+
+## Weakly informative priors
+
+**Basic idea:** Introduce scale information, e.g., about order of magnitude or signs of parameters, in order to regularize inferences.
+
+- Well defined units and meaningful parameterizations.
+- Does not necessarily leverage full domain-specific knowledge. 
+- Requires an understanding of how the likelihood, prior, and data interact in the *joint* model. 
+- In our example, weakly informed prior on average height for a person of average weight and on slope s.t. encode a positive association and unlikely to observe someone more extreme than the shortest and tallest people in the world. 
+- Another example, \texttt{RStanArm} puts a weakly informative prior on transformed parameters in linear regression via a QR decomposition of the design matrix, see [\textcolor{red}{here}](https://cran.r-project.org/web/packages/rstanarm/vignettes/lm.html).   
+
+## Poorly Informed Regression: Analysis with Weakly Informative Priors
+
+Model with weakly informative priors [^2]:
+
+$$\begin{aligned}
+h_i &\sim Normal(\mu_i, \sigma^2)\\ 
+\mu_i &= \alpha + \beta(w_i - \bar{w}) \\
+\alpha &\sim Normal(160, 20^2) \\
+\beta &\sim LogNormal(0, 1) \\
+\sigma &\sim HalfNormal(5)
+\end{aligned}$$
+
+[^2]: Be a good Bayesian and look some stuff up: [\textcolor{red}{height}](https://en.wikipedia.org/wiki/List_of_average_human_height_worldwide) and  [\textcolor{red}{weight}](https://en.wikipedia.org/wiki/Human_body_weight). 
+
+## Poorly Informed Regression: Analysis with Weakly Informative Priors
+
+Prior distribution:
+
+```{r ht_wt_priorfit_wi, cache = TRUE, fig.width=4, fig.height=2}
+
+wi_mod_prior = 
+  brm(formula = height ~ weight, 
+      family = gaussian,
+      data = dat_full,
+      prior = c(prior("normal(160, 20)", class = "Intercept"),
+                prior("lognormal(0, 1.25)", coef = "weight"),
+                prior("normal(0, 5)", class = "sigma")),
+      save_all_pars = TRUE,
+      sample_prior = "only")
+
+marginal_effects(wi_mod_prior, method = "fitted", spaghetti = TRUE, nsamples = 100)
+
+```
+
+```{r ht_wt_fit_weaklyinformative, cache = TRUE}
+
+wi_mod_sub_post = 
+  brm(formula = height ~ weight, 
+      family = gaussian,
+      data = dat_sub,
+      prior = c(prior("normal(160, 20)", class = "Intercept"),
+                prior("lognormal(0, 1.25)", coef = "weight"),
+                prior("exponential(0.1)", class = "sigma")),
+      save_all_pars = TRUE)
+
+```
+
+
+## Poorly Informed Regression: Analysis with Weakly Informative Priors
+
+Much more sensible posterior.
+
+```{r ht_wt_post_me3, fig.height=2, fig.width=3, fig.cap="Posterior distribution of regression lines."}
+
+marginal_effects(wi_mod_sub_post, method = "fitted", spaghetti = T, nsamples = 100) 
+
+```
+
+
+## Poorly Informed Regression: Analysis with Weakly Informative Priors
+
+Posterior distributions of model parameters seem reasonable, not crazy wide. 
+
+```{r ht_wt_post_wi, fig.height=1.5, fig.width=5.5, fig.cap="Parameter posteriors and 95 percent credible intervals."}
+
+post_incpt_wi = 
+  mcmc_areas(wi_mod_sub_post, pars = c("temp_Intercept"), prob = 0.95) + 
+  scale_y_discrete(labels = "", expand = c(0,0)) +
+  labs(title = "Intercept", y = "Density") + 
+  # scale_x_continuous(breaks = 149:151, limits = c(148.5, 151.1)) + 
+  geom_vline(xintercept = 150, colour = "darkred") + 
+  theme_minimal() 
+post_slope_wi = 
+  mcmc_areas(wi_mod_sub_post, pars = c("b_weight"), prob = 0.95) + 
+  scale_y_discrete(labels = "", expand = c(0,0)) +
+  geom_vline(xintercept = 0.55, colour = "darkred") + 
+  labs(title = "Slope") + 
+  theme_minimal() 
+post_sigma_wi = 
+  mcmc_areas(wi_mod_sub_post, pars = c("sigma"), prob = 0.95) + 
+  scale_y_discrete(labels = "", expand = c(0,0)) +
+  geom_vline(xintercept = 4.5, colour = "darkred") + 
+  labs(title = "Error std. dev.") + 
+  theme_minimal()
+
+plot_grid(post_incpt_wi, post_slope_wi, post_sigma_wi, ncol = 3, rel_widths = c(1.25,1,1))
+```
+
+
+## Poorly Informed Regression: Analysis with Weakly Informative Priors
+
+Leave-one-out posterior predictive distributions are still wide, but perform better ($ELPD_{WI} - ELPD_{NI} \approx 0.4 \pm 0.2$).
+
+```{r wi_vs_diff_loocomp, cache = T}
+loo::compare(loo(wi_mod_sub_post, reloo = T), loo(stupid_mod_sub_post, reloo = T))
+```
+
+
+```{r ht_wt_wi_postpred_loo2, fig.height=2, fig.width=3, fig.cap="Observed heights and leave-one-out 95 percent posterior predictive intervals."}
+
+hrep2 = posterior_predict(wi_mod_sub_post)
+loo2 = loo(wi_mod_sub_post, save_psis = T)
+psis2 = loo2$psis_object
+lw2 = weights(psis2)
+
+ppc_loo_intervals(y = dat_sub$height, yrep = hrep2, psis_object = psis2, prob_outer = 0.95)
+```
+
+## Poorly Informed Regression: Failure Mode of Light Tailed Priors
+
+What if our prior is too tight and we get the location wrong?
+
+$$\begin{aligned}
+h_i &\sim Normal(\mu_i, \sigma^2)\\ 
+\mu_i &= \alpha + \beta(w_i - \bar{w}) \\
+\alpha &\sim Normal(170, 2.5) \\
+\beta &\sim LogNormal(0, 1.25) \\
+\sigma &\sim HalfNormal(5)
+\end{aligned}$$
+
+## Poorly Informed Regression: Failure Mode of Light Tailed Priors
+
+Prior distribution:
+
+```{r ht_wt_priorfit_wi2, cache = TRUE, fig.width=4, fig.height=2}
+
+wi_mod_prior2 = 
+  brm(formula = height ~ weight, 
+      family = gaussian,
+      data = dat_sub,
+      prior = c(prior("normal(170, 2.5)", class = "Intercept"),
+                prior("lognormal(0, 1.25)", coef = "weight"),
+                prior("normal(0, 5)", class = "sigma")),
+      save_all_pars = TRUE,
+      sample_prior = "only")
+
+marginal_effects(wi_mod_prior2, method = "fitted", spaghetti = TRUE, nsamples = 100)
+
+```
+
+```{r ht_wt_fit_weaklyinformative2, cache = TRUE}
+
+wi_mod_sub_post2 = 
+  brm(formula = height ~ weight, 
+      family = gaussian,
+      data = dat_sub,
+      prior = c(prior("normal(170, 2.5)", class = "Intercept"),
+                prior("lognormal(0, 1.25)", coef = "weight"),
+                prior("normal(0, 5)", class = "sigma")),
+      save_all_pars = TRUE)
+
+```
+
+
+## Poorly Informed Regression: Failure Mode of Light Tailed Priors
+
+Nothing super glaring here?
+
+```{r ht_wt_post_me4, fig.height=2, fig.width=3, fig.cap="Posterior distribution of regression lines."}
+
+marginal_effects(wi_mod_sub_post2, method = "fitted", spaghetti = T, nsamples = 100) 
+
+```
+
+
+## Poorly Informed Regression: Failure Mode of Light Tailed Priors
+
+Ugh oh. Notice how the posterior doesn't contract relative to the prior. 
+
+```{r ht_wt_post_wi2, fig.height=1.5, fig.width=3.5, fig.cap="Parameter posteriors and 95 percent credible intervals."}
+ 
+  mcmc_hist(wi_mod_sub_post2, pars = c("temp_Intercept"), freq = FALSE, binwidth = 1) +
+  geom_line(data = data.frame(temp_Intercept = seq(140,190,by=0.1),
+                              density = dnorm(seq(140,190,by=0.1), 170, 2.5)),
+            aes(x = temp_Intercept, y = density),
+            colour = "darkgreen", linetype = "dashed", size = 1) + 
+  scale_y_discrete(labels = "", expand = c(0,0)) +
+  labs(title = "Intercept", y = "Density") + 
+  geom_vline(xintercept = 150, colour = "darkred") + 
+  theme_minimal() 
+
+```
+
+
+## Poorly Informed Regression: Failure Mode of Light Tailed Priors
+
+Systematic bias in leave-one-out predictive densities is bad news bears!
+
+```{r ht_wt_wi_postpred_loo3, fig.height=2, fig.width=3, fig.cap="Observed heights and leave-one-out 95 percent posterior predictive intervals."}
+
+hrep3 = posterior_predict(wi_mod_sub_post2)
+loo3 = loo(wi_mod_sub_post2, save_psis = T)
+psis3 = loo3$psis_object
+lw3 = weights(psis3)
+
+ppc_loo_intervals(y = dat_sub$height, yrep = hrep3, psis_object = psis3, prob_outer = 0.95)
+```
+
+## Poorly Informed Regression: Failure Mode of Heavy Tailed Priors
+
+What if our prior is too diffuse and we get the location wrong?
+
+$$\begin{aligned}
+h_i &\sim Normal(\mu_i, \sigma^2)\\ 
+\mu_i &= \alpha + \beta(w_i - \bar{w}) \\
+\alpha &\sim Cauchy(170, 2.5) \\
+\beta &\sim LogNormal(0, 1.25) \\
+\sigma &\sim HalfNormal(5)
+\end{aligned}$$
+
+```{r ht_wt_fit_weaklyinformative3, cache = TRUE}
+
+wi_mod_sub_post3 = 
+  brm(formula = height ~ weight, 
+      family = gaussian,
+      data = dat_sub,
+      prior = c(prior("cauchy(170, 2.5)", class = "Intercept"),
+                prior("lognormal(0, 1.25)", coef = "weight"),
+                prior("normal(0, 5)", class = "sigma")),
+      save_all_pars = TRUE)
+
+```
+
+## Poorly Informed Regression: Failure Mode of Heavy Tailed Priors
+
+Posterior now contracts around the true value, but if we were to inspect more closely we'd see that it's also leaking mass out into the tails.
+
+```{r ht_wt_post_wi3, fig.height=1.5, fig.width=3.5, fig.cap="Parameter posteriors and 95 percent credible intervals."}
+ 
+  mcmc_hist(wi_mod_sub_post3, pars = c("temp_Intercept"), freq = FALSE, binwidth = 0.5) +
+  geom_line(data = data.frame(temp_Intercept = seq(140,190,by=0.1),
+                              density = dcauchy(seq(140,190,by=0.1), 170, 2.5)),
+            aes(x = temp_Intercept, y = density),
+            colour = "darkgreen", linetype = "dashed", size = 1) + 
+  scale_y_discrete(labels = "", expand = c(0,0)) +
+  labs(title = "Intercept", y = "Density") + 
+  geom_vline(xintercept = 150, colour = "darkred") + 
+  theme_minimal() 
+
+```
+
+
+## Poorly Informed Regression: Failure Mode of Heavy Tailed Priors
+
+Systematic bias in leave-one-out predictive densities is now gone. Huzzah!
+
+```{r ht_wt_wi_postpred_loo4, fig.height=2, fig.width=3, fig.cap="Observed heights and leave-one-out 95 percent posterior predictive intervals."}
+
+hrep4 = posterior_predict(wi_mod_sub_post3)
+loo4 = loo(wi_mod_sub_post3, save_psis = T)
+psis4 = loo4$psis_object
+lw4 = weights(psis4)
+
+ppc_loo_intervals(y = dat_sub$height, yrep = hrep4, psis_object = psis4, prob_outer = 0.95)
+```
+
+## Recapping
+
+Some key takeaways:
+
+- We went through an iterative process to evaluate how different priors act on the posterior. 
+  1. Interrogate prior.
+  2. Fit model.
+  3. Criticize model. 
+  4. Wash-rinse-repeat. 
+- We could have done more at each step, but we only had an hour. Read about robustifying Bayesian workflow [\textcolor{red}{here}](https://betanalpha.github.io/assets/case_studies/principled_bayesian_workflow.html).
+- Incorporating information about *scales* can help regularize weakly informed models. 
+- But remember, our goal is to identify scales that are consistent with our prior beliefs, not exact values. - **Big warning:** Not necessarily a good idea to look at your data and pick the prior to look like it. We don't know as much as we think. Remember, it was hubris that killed the king. 
+- Not the only way to come up with priors, but thinking generatively about how parts of the model interact can help diagnose subtle issues that would otherwise have gone unnoticed.
+
+## References
+
+M. Betancourt "How the Shape of a Weakly Informative Prior Affects Inferences." \url{https://betanalpha.github.io/assets/case_studies/weakly_informative_shapes.html} (2017). 
+
+J. Gabry, et al. "Visualization in Bayesian workflow." *Journal of the Royal Statistical Society: Series A (Statistics in Society)* 182.2 (2019): 389-402.
+
+A. Gelman, S. Simpson, and M. Betancourt. "The prior can often only be understood in the context of the likelihood." *Entropy* 19.10 (2017): 555.
+
+C.J. Geyer. "Asymptotics of maximum likelihood without the LLN or CLT or sample size going to infinity." *Advances in Modern Statistical Theory and Applications: A Festschrift in honor of Morris L. Eaton*. Institute of Mathematical Statistics, 2013. 1-24.
+
+## 
