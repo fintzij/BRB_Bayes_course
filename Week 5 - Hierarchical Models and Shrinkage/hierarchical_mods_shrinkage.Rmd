@@ -1,0 +1,592 @@
+---
+title: "Hierarchical Models and Shrinkage"
+shorttitle: "Hierarchical Models and Shrinkage"
+subtitle: ""
+author: "Jon Fintzi"
+short-author: "Jon Fintzi"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+short-date: '`r format(Sys.Date(), "%m/%d/%y")`'
+institute: | 
+  | National Institute of Allergy and Infectious Diseases
+  | National Institutes of Health
+short-institute: "Biostatistics Research Branch"
+department: "Biostatistics Research Branch" 
+mainfont: Roboto Light
+monofont: Roboto Mono
+fontsize: 13pt
+classoption: aspectratio = 1610
+urlcolor: red
+output: 
+   youngmetro::metro_beamer
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      cache = TRUE, 
+                      message = FALSE, 
+                      warning = FALSE, 
+                      fig.align = "center",
+                      dev = 'pdf')
+if (!require("tidyverse")) {
+  install.packages("tidyverse", dependencies = TRUE) 
+}
+library(tidyverse)
+library(GGally)
+library(randomNames)
+library(extraDistr)
+library(cowplot)
+library(bayesplot)
+library(latex2exp)
+library(ggplot2)
+library(rstanarm)
+library(loo)
+library(rstan)
+set.seed(52787)
+theme_set(theme_minimal(base_family = "sans"))
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
+```
+
+## In conclusion
+
+Every time we have met, we've talked about:
+\vspace{-0.1in}
+
+- Bayesian inference *always* starts with a model for the **joint distribution** of $\theta$ and $y$:.\vspace{-0.1in} $$\pi(\theta, y) = f(y|\theta)\pi(\theta) = \pi(\theta|y)m(y).\vspace{-0.1in}$$
+- **Bayes rule** yields the **posterior distribution** \vspace{-0.1in}
+$$\pi(\theta|y) =  \frac{f(y,\theta)}{m(y)} = \frac{f(y|\theta)\pi(\theta)}{m(y)} \propto Likelihood\times Prior.\vspace{-0.1in}$$.
+- All of the information used in the *update* to our prior is encoded in the **likelihood**,\vspace{-0.1in} $$L(\mb{y}|\theta) = \prod_{i=1}^N f(y_i|y_{1,\dots,i-1}\theta).\vspace{-0.1in}$$ 
+
+And last time, we talked about:
+
+  - Priors for linear regression parameters.
+  - Workflow, prior and posterior predictive distributions.
+  - Failure modes of light tailed priors under poorly chosen scales.
+  - Weakly informative priors as a starting point.
+  
+## Lectures 15-17 of Statistical Rethinking
+
+Multilevel/hierarchical models:
+
+- Account for latent structure:
+  - Clustering, e.g., students < classrooms < schools < districts, meta-analyses. 
+  - Heterogeneity, lower level units have individual parameters.
+- Shrinkage towards population average. 
+- Improved out of sample performance, don't want to overfit or underfit. 
+- Some other topics as well: reparameterization, priors on covariances for subject level parameters, 
+
+## Plan for today
+
+Shrinkage, hierarchical models, and regularized regression:
+
+- Baseball example[^1] - batting ability for players in 1970.
+- Three different models - complete, partial, and no pooling of information.
+- Briefly talk about sparse regression with horseshoe priors as another example of hierarchical model. 
+
+[^1]: Borrowing heavily from Carpenter (2018)
+
+## Take me out to the ballgame
+
+Data from the 1970 Major League Baseball season:
+
+- $N=18$ players. 
+- Data: $y_i = Hits_i /AB_i =$ batting average for player $i$, first $K_i= 45$ at-bats.
+- Goal: predict batting average for remainder of the season, $\wtil{y}_i$.
+
+```{r bball}
+data(bball1970)
+bball = bball1970
+logit = boot::logit
+inv_logit = boot::inv.logit
+
+sumstat = 
+  function(x, q = c(0.5, 0.05, 0.95), digits = 2, trans = "invlogit") {
+    if(trans == "invlogit") {
+      xt = inv_logit(x)
+      paste0(round(quantile(xt, q[1]), digits = digits), " (",
+             round(quantile(xt, q[2]), digits = digits), ", ",
+             round(quantile(xt, q[3]), digits = digits), ")")
+    } else {
+      paste0(round(quantile(x, q[1]), digits = digits), " (",
+             round(quantile(x, q[2]), digits = digits), ", ",
+             round(quantile(x, q[3]), digits = digits), ")")
+    }
+  }
+
+# batting averages
+bball$AvgFirst45 = bball$Hits / bball$AB
+bball$AvgRemainder = bball$RemainingHits / bball$RemainingAB
+
+head(bball)
+
+```
+
+## Model 1 - Complete Pooling
+
+Use a single quantity, $\rho$, to represent the probability of a hit for all players. 
+
+- Parameter, $\lambda = \logit(\rho) = \log(\rho/(1-\rho)) =$ log-odds of a hit, so the probability of a hit is $\rho = \logit^{-1}(\lambda)= 1/(1+\exp(-\lambda))$.
+- Suppose at-bats for each player are independent Bernoulli trials, $y_i \sim Binomial(K_i, \rho) \equiv Binomial(K_i, \logit^{-1}(\lambda))$. 
+- Complete pooling model, $\pi(\mb{Y},\lambda)$: 
+$$\begin{aligned}
+  \pi(\lambda|\mb{y}) &\propto \pi(\lambda)L(\mb{y}|\bs{\lambda}),\\
+  \lambda &\sim N(-1,1), \\
+  L(\mb{y}|\lambda) &= \prod_{i=1}^N Binomial(y_i|K_i, \rho).
+\end{aligned}$$
+- Note, prior and posterior over $\lambda$ imply a prior and posterior over $\rho$. 
+- Prior for $\lambda$ is weakly informative for $\rho$; prior median (90% interval) = `r sumstat(rnorm(1e6, -1, 1), digits = 3)`). 
+
+## Model 1 - Complete Pooling
+
+Fit the model using \texttt{RStanArm} (see Rmarkdown for code). 
+
+```{r comp_pool_fit, cache = TRUE}
+# fit the model
+wi_prior = normal(-1, 1)  # weakly informative prior on log-odds
+fit_pool = stan_glm(cbind(Hits, AB - Hits) ~ 1, 
+                     data = bball, 
+                     family = binomial("logit"),
+                     prior_intercept = wi_prior, 
+                     seed = 52787, refresh = 0)
+
+```
+
+- Posterior median (90% Credible interval): `r sumstat(as.matrix(fit_pool)[,1], digits = 2)`. 
+- Posterior distribution of mean batting average (blue histogram) and prior (green density):
+
+```{r fit_pool_post, fig.width=3, fig.height = 2, cache = T}
+fpm = inv_logit(as.matrix(fit_pool))
+prior_dens = density(inv_logit(rnorm(1e6, -1, 1)))
+mcmc_hist(fit_pool, transformations = inv_logit, freq = FALSE, binwidth = 0.005) + 
+  geom_vline(xintercept = median(fpm), colour = "darkred", size = 1) + 
+  geom_vline(xintercept = quantile(fpm, c(0.05, 0.95)), 
+             colour = "darkred", size = 0.5, linetype = "dashed") + 
+  geom_line(data = data.frame(x=prior_dens$x, y = prior_dens$y), 
+            aes(x=x,y=y), colour = "darkgreen") + 
+  scale_x_continuous(limits = c(0.15, 0.4)) + 
+  labs(x = "Mean batting average")
+```
+
+## Model 2 - No Pooling
+
+Use a different quantity, $\rho_i$, to independently represent the probability of a hit for each player.  
+
+- Parameter, $\lambda_i = \logit(\rho_i) = \log(\rho_i/(1-\rho_i)) =$ log-odds of a hit for player $i$, so the probability of a hit is $\rho_i = \logit^{-1}(\lambda_i)= 1/(1+\exp(-\lambda_i))$.
+- Suppose at-bats for each player are independent Bernoulli trials, $y_i \sim Binomial(K_i, \rho_i) \equiv Binomial(K_i, \logit^{-1}(\lambda_i))$. 
+- No-pooling model, $\pi(\mb{Y},\bs{\lambda}) = \pi(\mb{Y}|\bs{\lambda})\prod\pi(\lambda_i)$: 
+$$\begin{aligned}
+  \pi(\lambda_i|\mb{y}) &\propto \pi(\lambda_i)L(\mb{y}|\bs{\lambda}),\\
+  \lambda_i &\sim N(-1,1), \\
+  L(\mb{y}|\lambda_i) &= \prod_{i=1}^N Binomial(y_i|K_i, \rho_i).
+\end{aligned}$$
+- Note, independent priors and sampling distributions imply independent posteriors over $\lambda_i$. 
+
+## Model 2 - No Pooling
+
+```{r fit_nopool, cache = TRUE}
+fit_nopool = 
+  update(fit_pool, formula = . ~ 0 + Player, prior = wi_prior)
+
+```
+
+- Independent posterior distributions of player-specific batting averages are wider. 
+- Only 45 Bernoulli trials per player, vs. 810 trials with complete pooling. 
+- Posterior distributions of batting averages:
+
+```{r fit_nopool_posts, fig.width=4, fig.height=2.6, cache = T}
+nopool_dists = 
+  mcmc_areas_ridges(fit_nopool, transformations = inv_logit, prob_outer = 0.9) + 
+  labs(x = "Batting average")
+nopool_dists
+```
+
+## Model 3 - Partial Pooling
+
+Use a different quantity, $\rho_i$, for each player while encoding that players are similar, not only to themselves, but also to one another.  
+
+- Now, player-level parameters, $\lambda_i$, have a joint distribution, $\lambda_i \sim \pi(\theta_\lambda)$. 
+- Partial-pooling model: 
+$$\begin{aligned}
+  \pi(\lambda_i|\mb{y}) &\propto \pi(\lambda_i)L(\mb{y}|\bs{\lambda}),\\
+  \lambda_i &\sim N(\mu_\lambda, \tau_\lambda^2),\\
+  \mu_\lambda &\sim N(-1, 1), \\
+  \tau_\lambda &\sim Exponential(1), \\
+  L(\mb{y}|\lambda_i) &= \prod_{i=1}^N Binomial(y_i|K_i, \rho_i). \\
+\end{aligned}$$
+- Players are no longer independent in this model, rather, they are *exchangeable*, a priori. 
+- Exchangeability $\implies \pi(\lambda_1,\lambda_2) = \pi(\lambda_2,\lambda_1)$, and is weaker than independence, $\pi(\lambda_1,\lambda_2) = \pi(\lambda_1)\pi(\lambda_2)$. 
+
+## Model 3 - Partial Pooling
+
+```{r fit_partialpool, cache = TRUE}
+disp_prior = exponential(1)
+fit_partialpool = 
+  stan_glmer(cbind(Hits, AB - Hits) ~ (1 | Player), 
+             data = bball,
+             family = binomial("logit"), 
+             prior_intercept = wi_prior,          # prior on pop mean
+             prior_covariance = decov(scale = 1), # exponential(1) prior on tau
+             refresh = 0)
+
+shift_draws = function(draws) {
+  sweep(draws[, -1], MARGIN = 1, STATS = draws[, 1], FUN = "+")
+}
+alphas = shift_draws(as.matrix(fit_partialpool)[,1:19])
+colnames(alphas) = bball$Player
+```
+
+```{r partialpool_posts, fig.width=5, fig.height=3, cache = T}
+
+pop_pars = 
+  data.frame(lambda_pop = inv_logit(as.matrix(fit_partialpool)[,1]),
+             tau_pop = as.matrix(fit_partialpool)[,20])
+
+tau_post = 
+  mcmc_hist(pop_pars, regex_pars = "tau_pop", freq = FALSE, binwidth = 0.01) + 
+  geom_line(data = data.frame(x = seq(0,0.5,by=0.01), y = dexp(seq(0,0.5,by=0.01))),
+            aes(x=x,y=y), colour = "darkgreen", size = 0.5) + 
+  geom_vline(xintercept = median(pop_pars$tau_pop), colour = "darkred", size = 1) + 
+  geom_vline(xintercept = quantile(pop_pars$tau_pop, c(0.05, 0.95)), 
+               colour = "darkred", size = 0.5, linetype = "dashed") + 
+  labs(x = expression(tau[lambda])) + 
+  theme(text = element_text(size = 20))
+
+mu_post = 
+  mcmc_hist(pop_pars, pars = "lambda_pop", freq = FALSE, binwidth = 0.005) + 
+  geom_line(data = data.frame(x=prior_dens$x, y = prior_dens$y), 
+            aes(x=x,y=y), colour = "darkgreen") + 
+  scale_x_continuous(limits = c(0.175, 0.35)) + 
+  geom_vline(xintercept = median(pop_pars$lambda_pop), colour = "darkred", size = 1) + 
+  geom_vline(xintercept = quantile(pop_pars$lambda_pop, c(0.05, 0.95)), 
+             colour = "darkred", size = 0.5, linetype = "dashed") + 
+  labs(x = expression(mu[lambda])) + 
+  theme(text = element_text(size = 20))
+
+pop_par_plots = cowplot::plot_grid(mu_post, tau_post, ncol = 1, align = "hv")
+player_dists = 
+  mcmc_areas_ridges(alphas, prob_outer = 0.9, transformations = inv_logit) + 
+  labs(x = "Batting average")
+
+cowplot::plot_grid(pop_par_plots, player_dists, ncol = 2)
+```
+
+## Comparing Model Estimates
+
+Partially pooled estimates are a weighted average of the unpooled and completely pooled estimates, i.e., we are *shrinking* the unpooled estimates towards the population average hit probability. 
+
+```{r estcomp, fig.width=4, fig.height=2, cache = T}
+
+estcomp_dat = 
+  data.frame(
+    Player = rep(bball$Player, 3),
+    Model = rep(c("Unpooled", "Partially Pooled", "Completely Pooled"), each = nrow(bball)),
+    Estimate = 
+       inv_logit(c(apply(as.matrix(fit_nopool), 2, quantile, 0.5),
+                  apply(alphas, 2, quantile, 0.5),
+                  rep(quantile(as.matrix(fit_pool), 0.5), nrow(bball)))),
+    LB = 
+      inv_logit(c(apply(as.matrix(fit_nopool), 2, quantile, 0.05),
+                  apply(alphas, 2, quantile, 0.05),
+                  rep(quantile(as.matrix(fit_pool), 0.05), nrow(bball)))),
+    UB = 
+      inv_logit(c(apply(as.matrix(fit_nopool), 2, quantile, 0.95),
+                  apply(alphas, 2, quantile, 0.95),
+                  rep(quantile(as.matrix(fit_pool), 0.95), nrow(bball)))),
+    Observed = bball$AvgFirst45)
+
+# shrinkage_diag = 
+  ggplot(estcomp_dat, aes(x = Model, y = Estimate, group = Player)) + 
+  geom_point(size = 1.5, alpha = 0.8) + 
+  geom_line(alpha = 0.8) + 
+  labs(y = expression(hat(rho) ~ "|" ~ y))
+
+# ggplot(subset(estcomp_dat, Model == "Partially Pooled"),
+#        aes(x = Observed, y = Estimate, ymin = LB, ymax = UB)) + 
+#   geom_hline(yintercept = inv_logit(median(as.matrix(fit_pool))), size = 1, colour = "darkgreen") + 
+#   geom_abline(intercept = 0, slope = 1, colour = "darkred", linetype = "dashed") + 
+#   geom_linerange(colour = "darkblue", alpha = 0.8, size = 0.5) + 
+#   geom_point(colour = "darkblue", size = 1)+
+#   scale_x_continuous(limits = c(min(estcomp_dat$Observed), 
+#                                   max(estcomp_dat$Observed)), 
+#                      breaks = seq(min(estcomp_dat$Observed), 
+#                                   max(estcomp_dat$Observed),length = nrow(bball)),
+#                      labels = NULL) + 
+#   scale_y_continuous(limits = c(0.1,0.45)) + 
+#   labs(x = "Observed batting agerage", y = "Estimated batting average") + 
+#   theme(panel.grid.minor.x = element_blank()) 
+```
+
+## Why bother with all this pooling stuff?
+
+A few reasons:\vspace{-0.1in}
+
+- Arguably more faithful to the data generating process.
+- Better out of sample predictive performance: 
+  - Expected log predictive density: $elpd_{partial\ pool} = -46.6 \pm 2.2$; $elpd_{no pool} = -53.8 \pm 0.80$. 
+  - Less uncertainty in prediction intervals: 
+
+```{r pp_intervals, fig.width=5, fig.height=2.25, cache = T}
+
+# sample from the posterior predictive
+newdata = data.frame(Hits = bball$RemainingHits, AB = bball$RemainingAB, Player = bball$Player)
+pp_partial = posterior_predict(fit_partialpool, newdata = newdata)
+pp_nopool = posterior_predict(fit_nopool, newdata = newdata)
+colnames(pp_partial) = colnames(pp_nopool) = bball$Player
+
+# summarize
+pp_res = 
+  data.frame(
+    Player = rep(bball$Player, 2),
+    Model = rep(c("Unpooled", "Partially Pooled"), each = nrow(bball)),
+    rbind(t(cbind(apply(pp_nopool, 2, quantile, c(0.05, 0.5, 0.95)))),
+          t(cbind(apply(pp_partial, 2, quantile, c(0.05, 0.5, 0.95))))),
+    Observed = bball$RemainingHits)
+
+ggplot(pp_res, aes(x = Player, y = X50., ymin = X5., ymax = X95., colour = Model, shape = Model)) + 
+  geom_point(position = position_dodge(width = 0.75)) + 
+  # geom_point(data = pp_res, aes(x = Player, y = Observed, colour = "Observed", shape = "Observed")) + 
+  geom_pointrange(position = position_dodge(width = 0.75)) +
+  scale_color_brewer(type = "qual", palette = 2) + 
+  labs(x = NULL, y = "Predicted hits") + 
+  coord_flip() 
+```
+
+## Summary Before We Continue
+
+Different models for the data and parameters:
+
+- Complete pooling: ignore player labels entirely and lump data. 
+- No pooling: same as independently analyzing data for each player. 
+- Partial pooling - players are exchangeable in the prior, estimated batting average depends on each player's data and population average.
+
+Notice that complete and no pooling are the limiting cases of the partial pooling model!
+
+- Partial pooling: $\lambda_i \sim N(\mu_\lambda,\tau_\lambda^2)$
+- Complete pooling, all player-level parameters the same: $\lim_{\tau_\lambda\rightarrow0} N(\mu_\lambda, \tau_\lambda^2)$. 
+- No pooling, player-level parameters unrelated: $\lim_{\tau_\lambda\rightarrow\infty} N(\mu_\lambda, \tau_\lambda^2)$. 
+
+## The Year is 1998 and Steroids are All the Rage!
+
+Fun fact: 1998 was the only year I ever paid attention to baseball.
+
+- Sammy Sosa and Mark Maguire were chasing Roger Maris's home run record.
+- I was twelve and made my parents get a newspaper subscription so I could get updated first thing in the morning. 
+- Turns out sportsmanship didn't make the majors.
+- I became disillusioned. Clearly.
+
+## The Year is 1998 and Steroids are All the Rage!
+
+Simulated batting averages over the first 100 at-bats for 250 players under the following model:\vspace{-0.1in}
+
+$$\begin{aligned}
+Y_{i} &\sim Binomial(100, \rho_{i} = \logit^{-1}(\lambda_i)),\ i=1,\dots,250\\
+\lambda_i &= \beta_0 + \beta_1X_{roids,i} + \beta_2X_{i,2} + \dots+\beta_{25}0X_{i,25},\ i=1,\dots,250\\
+\logit^{-1}(\beta_0) &= 0.269\\
+\exp(\beta_1) &= 1.25 \\
+X_{roids,i} &= 1,\ i=1,\dots,75; X_{roids,i} = 0,\ i=76,\dots,250,\\
+\beta_j &\sim N(0, 0.02^2),\ j=2,\dots,25,\\
+X_{i,j} &\sim N(0,1),\ i=1,\dots,250,\ j=1,\dots,25.
+\end{aligned}$$
+
+- The thing that matters is steroid use (assumed observed).
+- Nothing else matters, and let's suppose we suspect nothing really matters. 
+
+## The Year is 1998 and Steroids are All the Rage!
+
+Simulated data: 
+
+```{r roid_sim, fig.height=2.5, fig.width=5}
+set.seed(4853)
+n = 250
+roids = 
+  data.frame(
+    Player = randomNames(n = n, which.names = "last"),
+    Hits = 0,
+    BA = 0,
+    Roids  = c(rep(1,75), rep(0, 175))
+  )
+
+# covariates
+covars = 
+  cbind(Roids = roids$Roids,
+        matrix(rnorm(n*24), n, 24))
+
+colnames(covars)[-1] = paste0("X",2:25)
+
+# true parameters
+true_pars = c(log(1.25), rnorm(24, 0, 0.02))
+
+roids$BA = inv_logit(-1 + covars %*% true_pars)
+roids$Hits = rbinom(nrow(roids), 100, roids$BA)
+
+ggplot(roids, aes(x = BA, y = Hits, colour = as.factor(Roids), shape = as.factor(Roids))) + 
+  geom_point(size = 1) + 
+  scale_color_brewer("",type = "qual", palette = 6, labels = c("Clean", "Juicin")) + 
+  scale_shape_discrete("",labels = c("Clean", "Juicin")) + 
+  labs(x = "True unobserved hit probability", y = "Hits observed") + 
+  theme(text = element_text(size = 15))
+```
+
+## A Simple Hierarchical Model
+
+Partial pooling, as before, but with a bit more complexity b/c of covariates:
+
+$$\begin{aligned}
+Y_{i} &\sim Binomial(100, \rho_{i} = \logit^{-1}(\lambda_i)),\ i=1,\dots,250\\
+\lambda_i &= \beta_{talent,i} + \beta_1Z_{roids,i} + \beta_2X_{i,3} + \dots+\beta_250X_{i,25},\ i=1,\dots,250\\
+\beta_0 &\sim N(-1,1), \\
+\beta_{j} &\sim N(0, 0.42),\ j = 1,\dots,25. 
+\end{aligned}$$
+
+- Priors for $\mu_\lambda$ and $\tau_\lambda$ are weakly informative as before.
+- Priors for covariates imply that 90% of their prior mass of the odds ratio of a hit is betwee 0.5x and 2x.
+- Note: too many parameters. We know even without fitting this that we're looking for trouble. 
+
+## Posterior distributions of model parameters
+
+Posterior distributions of model parameters are overly diffuse. Uncertainty is sure to propagate into other distributions of interest, e.g., posterior predictive distributions. \vspace{-0.1in}
+
+```{r roids_partial, cache = TRUE}
+
+# prep data for fitting
+roid_dat = 
+  data.frame(
+    Player = roids$Player,
+    Hits = roids$Hits,
+    covars)
+
+# fit the model
+slp_prior = normal(0, 0.42)
+formula =
+  as.formula(
+    paste0("cbind(Hits, 100 - Hits) ~ Roids + ", 
+           paste(paste0("X",3:25), collapse = " + ")))
+roid_partial_fit = 
+  stan_glm(formula, 
+             data = roid_dat,
+             family = binomial("logit"), 
+             prior_intercept = wi_prior,          # prior on pop mean
+             prior = slp_prior,
+             refresh = 0)
+```
+
+```{r roid_partial_plot, fig.width=3.5, fig.height=3}
+mcmc_areas_ridges(roid_partial_fit, regex_pars = c("Roid", "X"), transformations = "exp", prob_outer = 0.9)
+```
+
+
+## Hierarchical Shrinkage via Horseshoe Priors
+
+Want to incorporate prior knowledge that many parameters are essentially zero, but we don't know which ones.
+
+  - When $\beta_i$ is essentially zero, shrink $\pi(\beta_i|\mb{y})$ strongly to zero. 
+  - When $\beta_i$ is not essentially zero, shrink $\pi(\beta_i|\mb{y})$ very little without leaking posterior mass way out into the tails.
+  - Encode prior information about various aspects of the sparsity, e.g., effective # of non--zero terms, conditional independence structure, etc.
+	- Computational tractability. 
+	
+This is a tall order!
+
+## Hierarchical Shrinkage via Horseshoe Priors
+
+**Big idea:** prior scale for each model component is a product of *global* scale and its own *local* scale. 
+$$\begin{aligned}
+Y_{i} &\sim Binomial(100, \rho_{i} = \logit^{-1}(\lambda_i)),\ i=1,\dots,250\\
+\lambda_i &= \beta_0+ \beta_1Z_{roids,i} + \beta_2X_{i,3} + \dots+\beta_250X_{i,25},\ i=1,\dots,250\\
+\beta_0 &\sim N(-1,1), \\
+\beta_{j} &\sim N(0, \tau^2\sigma_j^2),\ j = 1,\dots,25,\\
+\sigma_j &\sim Cauchy^+(0,1).
+\end{aligned}$$
+
+## Hierarchical Shrinkage via Horseshoe Priors
+
+**Intuition:**
+
+  - Global scale parameter $\tau$ shrinks $\beta_j$ globally to 0.
+	- Local scales $\sigma_j$ have Cauchy tails, allowing some $\beta_j$ to escape shrinkage.
+	- Varying $\tau\implies$ more or less sparsity.
+	
+**Why horseshoe?**
+
+  - Good theoretical properties,
+  - Good computational properties,
+	- Not gonna talk about either, see Bhadra (2019). 
+	- Also [\textcolor{blue}{here}](https://betanalpha.github.io/assets/case_studies/bayes_sparse_regression.html) for a nice case study.
+
+## Hierarchical Shrinkage via Horseshoe Priors
+
+Posteriors for irrelevant parameters are strongly shrunk towards zero, but not the parameter for steroids. Just like we wanted!\vspace{-0.15in}
+
+```{r roids_hs}
+p0       = 1.1 # prior guess for the number of non-zero parameters
+tau0     = p0/(25-p0) * 1/sqrt(n) # scale
+hs_prior = hs(df=7, global_df=7, global_scale=tau0)
+roid_hs_fit = 
+  stan_glm(formula, 
+             data = roid_dat,
+             family = binomial("logit"), 
+             prior_intercept = wi_prior,          # prior on pop mean
+             prior = hs_prior)
+```
+
+```{r hs_plot, fig.width=3.5, fig.height=3}
+mcmc_areas_ridges(roid_hs_fit, regex_pars = c("Roid", "X"), transformations = "exp", prob_outer = 0.9)
+```
+
+## Hierarchical Shrinkage via Horseshoe Priors
+
+Shrinking irrelevant parameters results in better out of sample predictive performance: 
+
+  - Expected log predictive density: $elpd_{HS} - elpd_{partial pool} =$ `r round(compare_models(loo(roid_hs_fit), loo(roid_partial_fit))[[1]], digits = 2)` $\pm$ `r round(compare_models(loo(roid_hs_fit), loo(roid_partial_fit))[[2]], digits = 2)`.
+  - Less uncertainty in prediction intervals.
+
+```{r pp_intervals_roid, fig.width=5, fig.height=2.25, cache = T, eval = FALSE}
+
+# sample from the posterior predictive 
+# too tired to figure out how to declare the new data, but here's the code, generally
+pp_partial_roid = posterior_predict(roid_partial_fit, newdata = )
+pp_hs_roid = posterior_predict(roid_hs_fit)
+colnames(pp_partial_roid) = colnames(pp_hs_roid) = roid_dat$Player
+
+# summarize
+pp_res_roid = 
+  data.frame(
+    Player = rep(roid_dat$Player, 2),
+    Model = rep(c("Horseshoe", "Partially Pooled"), each = nrow(roid_dat)),
+    rbind(t(cbind(apply(pp_hs_roid, 2, quantile, c(0.05, 0.5, 0.95)))),
+          t(cbind(apply(pp_partial_roid, 2, quantile, c(0.05, 0.5, 0.95))))))
+
+pp_res_roid = pp_res_roid[c(1:10, 1:10+250),]
+
+ggplot(pp_res_roid, aes(x = Player, y = X50., ymin = X5., ymax = X95., colour = Model, shape = Model)) + 
+  geom_point(position = position_dodge(width = 0.75)) + 
+  # geom_point(data = pp_res, aes(x = Player, y = Observed, colour = "Observed", shape = "Observed")) + 
+  geom_pointrange(position = position_dodge(width = 0.75)) +
+  scale_color_brewer(type = "qual", palette = 2) + 
+  labs(x = NULL, y = "Predicted hits") + 
+  coord_flip() 
+```
+
+## Summary
+
+Iteration on the same idea: construct a joint distribution for data and parameters. 
+
+- Everything starts with a joint distribution. 
+- We didn't talk about this a lot today, but incredibly important to simulate from the prior and interrogate the joint prior distribution. 
+- Posterior predictive checks for model comparison. 
+
+Next week is the last lecture. We'll chat about Bayesian handling of missing data.
+
+- Sneak peak, can think of hierarchical models covered today as a sort of missing data problem. 
+- Lecture 20 of statistical rethinking.
+
+## References
+
+A. Bhadra, et al. "Horseshoe Regularization for Machine Learning in Complex and Deep Models." arXiv preprint arXiv:1904.10939 (2019).
+
+B. Carpenter, et al. "Hierarchical Partial Pooling for Repeated Binary Trials." \url{https://cran.r-project.org/web/packages/rstanarm/vignettes/pooling.html} (2018). 
+
+B. Efron and C. Morris. "Data analysis using Stein's estimator and its generalizations." *Journal of the American Statistical Association* 70.350 (1975): 311-319.
+
+A. Gelman, et al. Bayesian data analysis. Chapman and Hall/CRC, 2013.
+
+## 
