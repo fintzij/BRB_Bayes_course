@@ -1,0 +1,470 @@
+---
+title: "Missing Data and Measurement Error"
+shorttitle: "Missing Data and Measurement Error"
+subtitle: ""
+author: "Jon Fintzi"
+short-author: "Jon Fintzi"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+short-date: '`r format(Sys.Date(), "%m/%d/%y")`'
+institute: | 
+  | National Institute of Allergy and Infectious Diseases
+  | National Institutes of Health
+short-institute: "Biostatistics Research Branch"
+department: "Biostatistics Research Branch" 
+mainfont: Roboto Light
+monofont: Roboto Mono
+fontsize: 13pt
+classoption: aspectratio = 1610
+urlcolor: red
+output: 
+   youngmetro::metro_beamer
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, 
+                      cache = TRUE, 
+                      message = FALSE, 
+                      warning = FALSE, 
+                      fig.align = "center",
+                      dev = 'pdf')
+if (!require("tidyverse")) {
+  install.packages("tidyverse", dependencies = TRUE) 
+}
+library(tidyverse)
+library(GGally)
+library(randomNames)
+library(extraDistr)
+library(cowplot)
+library(bayesplot)
+library(latex2exp)
+library(ggExtra)
+library(ggplot2)
+library(mvtnorm)
+library(brms)
+library(mice)
+library(loo)
+library(rstan)
+set.seed(52787)
+theme_set(theme_minimal(base_family = "sans"))
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
+```
+
+## Overview
+
+- Bayesian inference *always* starts with a model for the **joint distribution** of $\theta$ and $y$:.\vspace{-0.1in} $$\pi(\theta, y) = f(y|\theta)\pi(\theta) = \pi(\theta|y)m(y).\vspace{-0.1in}$$
+- **Bayes rule** yields the **posterior distribution** \vspace{-0.1in}
+$$\pi(\theta|y) =  \frac{f(y,\theta)}{m(y)} = \frac{f(y|\theta)\pi(\theta)}{m(y)} \propto Likelihood\times Prior.\vspace{-0.1in}$$.\vspace{-0.1in}
+
+Last week we talked about hierarchical models, all we did was iterate on this ideas:
+
+  - Model expressed that people are self-similar, but also are similar to one another. 
+  - Individuals are *exchangeable* in the prior - reasonable to suppose that $\beta_{Jon}$ and $\beta_{Mike}$ come from the same distribution, but no prior information to differentiate Mike from Jon.
+  - We use the data to inform us about individuals *and* the population, individuals are no longer exchangeable in the posterior, i.e., $\pi(\beta_{Jon}|Y_{Jon},Y_{Mike})\neq\pi(\beta_{Mike}|Y_{Jon},Y_{Mike})$. 
+  - Different choices for model structure induce different features in the posterior, e.g., shrinkage with "mixed effects", horseshoe for inducing posterior sparsity. 
+  
+## Lecture 20 of Statistical Rethinking
+
+Example: divorce rate vs. state population size.
+
+- Treat true divorce rate as an unknown parameter:
+$$\begin{aligned}
+D_{obs,i} &\sim N(D_{true,i}, D_{SE,i}^2)\\
+D_{true,i} &\sim \pi(\theta).
+\end{aligned}$$
+- Effect is to shrink observed state divorce rates towards national average. 
+- If interested in divorce rate vs. population + marriage rate, can also model observed marriage as a noisy observation of the true marriage rate.
+- Missing data is a form of measurement error. 
+    
+## Lecture 20 of Statistical Rethinking
+
+- Common approaches to missing data:
+    - Complete case analysis - (best case) introduce uncertainty, (worst case) introduce confounding.
+    - Mean imputation, marginal imputation.
+```{r missing_correlated_data, fig.width=2, fig.height=1.5}
+mi_dat = 
+    as.data.frame(
+        cbind(
+            obs = rbinom(2e3, 1, 0.3),
+            mvtnorm::rmvnorm(2e3, mean = c(1,1), sigma = matrix(c(1,-0.8,-0.8,1), 2, 2))))
+
+p = ggplot(mi_dat, aes(x = V2, y = V3)) + 
+    geom_hex(colour = "#005b96") + 
+    geom_vline(xintercept = 0, colour = "darkred") + 
+    geom_hline(yintercept = 0, colour = "darkred") + 
+    labs(x="X", y="Y") + 
+    theme(legend.position = "none")
+ggMarginal(p, type = "histogram")
+```
+    
+\vspace{-0.2in}
+- Multiple imputation: simulate datasets from joint distribution, fit separately, and combine. 
+- Bayesian data augmentation: introduce missing data, $Y_{miss}$ as latent variables. Target the joint posterior $\pi(Y_{miss},\theta|Y_{obs})$.
+
+## Lecture 20 of Statistical Rethinking
+
+- Different missingness mechanisms, MCAR, MAR, and MNAR, require different models. 
+- Imputation can improve precision for estimates of interest (shrinkage!). 
+- Bayesian inference always starts with a *joint* model for data, parameters, and covariates. 
+
+## Plan for today
+
+Two examples:
+
+- Model BMI as a function of cholesterol and age. 
+    - Data augmentation with \texttt{brms} (Burkner, 2019). 
+    - Off-the-shelf, flexible, relatively straightforward syntax.
+- Compartmental models for partially observed incidence data. 
+    - Introduce true incidence as a latent variable. 
+    - Ordinary differential equations describe the latent incidence. 
+
+## Example: BMI vs. Cholesterol
+
+Data (\texttt{nhanes} from the \texttt{mice} package) 
+
+- 18 individuals, omit people missing both BMI and cholesterol.
+- BMI (kg/m$^2$)
+- Total serum cholesterol (mg/dL)
+
+```{r nhanes_dat}
+data(nhanes); nhanes = nhanes[!(is.na(nhanes$bmi) & is.na(nhanes$chl)),]
+head(nhanes[,c("chl", "bmi")])
+```
+
+## Example: BMI vs. Cholesterol
+
+Key features: \vspace{-0.1in}
+
+- Missingness in cholesterol and BMI, we'll assume MAR so need to impute but not model missingness (see Statistical Rethinking lecture 20 for the explanation of this). 
+- Looks like higher BMI associated with slightly higher cholesterol. 
+
+```{r nhanes_plot, fig.height=1.5, fig.width=3}
+
+ggplot(nhanes, aes(x = chl, y = bmi)) + 
+    geom_point() 
+
+```
+
+## Example: BMI vs. Cholesterol
+
+Model: \vspace{-0.1in}
+
+$$\begin{aligned}
+BMI_{obs,i} &\sim LogNormal(\mu_{bmi,i}, \sigma^2_{bmi}) \\
+BMI_{miss,i} &\sim LogNormal(\mu_{bmi,i}, \sigma^2_{bmi}) \\
+\mu_{bmi,i} &= \beta_0 + \beta_1 CHL_i\\
+CHL_{obs,i} &\sim Normal(\mu_{chl}, \sigma^2_{chl}) \\
+CHL_{miss,i} &\sim Normal(\mu_{chl}, \sigma^2_{chl}) \\
++\ Priors &\dots
+\end{aligned}$$
+
+- MAR $\implies$ observed and missing variables exchangeable in the prior.
+- If MNAR, have to model probability of missing given latent value (Chapters 8 and 18 of Gelman et al., 2013). 
+- If we fit this in \texttt{Stan}, declare observed values as data and missing values as parameters, which we estimate just like any other parameters.
+
+## Interlude: Algorithmic Implementation
+
+Example - normal means problem with missing values: $y_i\sim N(\mu, \sigma^2).$
+
+```{stan standat, output.var = "standat", echo = TRUE, eval=FALSE, cache = FALSE}
+data {
+  int<lower=0> N_obs; # number observed
+  int<lower=0> N_mis; # number missing
+  real y_obs[N_obs];  # vector of observed values
+}
+```
+
+## Interlude: Algorithmic Implementation
+
+Example - normal means problem with missing values: $y_i\sim N(\mu, \sigma^2).$
+
+```{stan stanpar, output.var = "stanpar", echo = TRUE, eval = FALSE, cache = FALSE}
+parameters {
+  real mu;              # mean parameter
+  real<lower=0> sigma;  # standard deviation
+  real y_mis[N_mis];    # missing values are parameters
+}
+```
+
+## Interlude: Algorithmic Implementation
+
+Example - normal means problem with missing values: $y_i\sim N(\mu, \sigma^2).$
+
+```{stan stanmod, output.var = "stanmod", echo = TRUE, eval = FALSE, cache = FALSE}
+model {
+  # joint distribution for observed and missing variables 
+  y_obs ~ normal(mu, sigma); 
+  y_mis ~ normal(mu, sigma);
+}
+```
+
+## Example: BMI vs. Cholesterol
+
+Trivial to fit using \texttt{brms}:
+
+```{r brms_nhanes_fit, echo = TRUE}
+# model formula, mi() indicates that missing values should be estimated
+bform <- 
+    bf(bmi | mi() ~ 1 + mi(chl), family = "lognormal") +
+    bf(chl | mi() ~ 1) + set_rescor(FALSE)
+
+# call to fit the model
+nhanes_fit <- brm(formula = bform, 
+                  data = nhanes,
+                  prior = prior(student_t(3,0,5), class = "b"), # change priors if you like
+                  refresh = 0) # silent compilation and fitting
+```
+
+## Example: BMI vs. Cholesterol
+
+Posterior is full of lines for BMI vs. cholesterol and values for cholesterol.
+
+```{r nhanes_marginals, fig.height=1.5, fig.width=3.5}
+
+bmi_vs_chl = plot(marginal_effects(nhanes_fit, effects = "chl", spaghetti = T, nsamples = 100), ask = F)
+
+```
+
+## Example: BMI vs. Cholesterol
+
+Interrogate the posterior predictive distribution to examine fit. 
+
+```{r nhanes_postpred, fig.height=2, fig.width=5.5, fig.cap="Posterior predicted BMI and cholesterol."}
+
+nhanes_pp = posterior_predict(nhanes_fit)
+
+nhanes_pp_chl = 
+    data.frame(subj = seq_len(nrow(nhanes)),
+               chl = nhanes$chl,
+               obs = is.na(nhanes$chl),
+               t(apply(nhanes_pp[,,2], 2, quantile, c(0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95))))
+
+pp_chl = 
+    ggplot(nhanes_pp_chl,
+       aes(x = subj, y = chl)) + 
+    geom_linerange(aes(x = subj, ymin = X5., ymax = X95.), 
+                   colour = "darkred", 
+                   alpha = 0.3, size = 1) + 
+    geom_linerange(aes(x = subj, ymin = X10., ymax = X90.), 
+                   colour = "darkred", 
+                   alpha = 0.4, size = 1) + 
+    geom_linerange(aes(x = subj, ymin = X25., ymax = X75.), 
+                   colour = "darkred", 
+                   alpha = 0.5, size = 1) +
+    geom_point(colour = "darkblue", shape = 17, size = 2) + 
+    scale_y_continuous(limits = c(100, 300)) + 
+    scale_x_continuous(breaks = NULL) + 
+    labs(x = "Subject", y = "Cholesterol")
+
+nhanes_pp_bmi = 
+    data.frame(subj = seq_len(nrow(nhanes)),
+               bmi = nhanes$bmi,
+               obs = is.na(nhanes$bmi),
+               t(apply(nhanes_pp[,,1], 2, quantile, c(0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95))))
+
+pp_bmi = 
+    ggplot(nhanes_pp_bmi,
+       aes(x = subj, y = bmi)) + 
+    geom_linerange(aes(x = subj, ymin = X5., ymax = X95.), 
+                   colour = "darkred", 
+                   alpha = 0.3, size = 1) + 
+    geom_linerange(aes(x = subj, ymin = X10., ymax = X90.), 
+                   colour = "darkred", 
+                   alpha = 0.4, size = 1) + 
+    geom_linerange(aes(x = subj, ymin = X25., ymax = X75.), 
+                   colour = "darkred", 
+                   alpha = 0.5, size = 1) +
+    geom_point(colour = "darkblue", shape = 17, size = 2) + 
+    scale_y_continuous(limits = c(15, 42)) +
+    scale_x_continuous(breaks = NULL) + 
+    labs(x = "Subject", y = "BMI")
+
+plot_grid(pp_bmi, pp_chl, nrow = 1)
+
+```
+
+## Example: Partially Observed Epidemic Count Data
+
+Parially observed incidence data: \vspace{-0.1in}
+
+- $N_{SI}(t_\ell) =$ Cumulative infections up to $t_\ell$,
+- $Y_\ell =$ new cases seen in $(t_{\ell-1},t_\ell]$,
+- $Y_\ell \sim Neg.Binomial(\mu = \rho\times(N_{SI}(t_\ell) - N_{SI}(t_{\ell-1})),\ \sigma^2 = \mu(1 + \mu / \phi)).$. 
+
+```{r incid_dat, out.width = '50%'}
+knitr::include_graphics("incid_plot.pdf")
+```
+
+## Example: Partially Observed Epidemic Count Data
+
+**Important:** \vspace{-0.1in}
+
+- Only observe a *fraction of cases* at *discrete times*. 
+- Data come from an outbreak that evolves *continuously* in time. 
+
+**What do we want to learn?**\vspace{-0.1in}
+
+- How many people were infected? How many people were infected?
+- How to characterize the transmission dynamics of the outbreak?
+
+## Example: Partially Observed Epidemic Count Data
+
+**What makes this difficult?** \vspace{-0.1in}
+
+1. *Under-reporting:* epidemic process, $\bf{X}$, only partially observed.
+
+```{r incid_dat2, out.width = '30%'}
+knitr::include_graphics("incid_plot.pdf")
+```
+\vspace{-0.1in}
+
+2. *Dependent happenings:* $\implies$ dependent data, $\bf{Y} = (Y_1,\dots,Y_L)$.
+
+    - Observed data likelihood:\vspace{-0.1in} 
+    $$L(\bf{Y}|\bs{\theta}) = \prod_{\ell=1}^{L}\pi(Y_\ell|Y_1,\dots,Y_{\ell-1},\bs{\theta}) \neq \prod_{\ell=1}^{L}\pi(Y_\ell|\bs{\theta}).$$
+    - *Intractable observed data likelihood* State space of $\bf{N}$ is *huge*, even in small populations!\vspace{-0.1in}
+    $$L(\bf{Y}|\bs{\theta}) = \int \prod_{\ell = 1}^{L} \pi(Y_\ell|Y_{1},\dots,Y_{\ell-1},\bf{N},\bs{\theta})\pi(\bf{N}|\bs{\theta})d\bf{N}$$\vspace{-0.1in}
+
+## Example: Partially Observed Epidemic Count Data
+
+**Strategy:** \vspace{-0.1in}
+
+- *Bayesian data augmentation* - introduce incident event processes, $\bf{N} = (\bf{N}_{SI},\bf{N}_{IR})$, as latent variables in the model. 
+- Target the joint posterior, $\pi(\bf{N},\bs{\theta}|\bf{Y})$. 
+
+**Challenge:** Need a tractable representation for the transition density of $\bf{N}(t_\ell)|\bf{N}(t_{\ell-1}),\bs{\theta}$. \vspace{-0.1in}
+
+- In large populations, not unreasonable to represent $\bf{N}$ with a deterministic system of ODEs. 
+- Classical tools in the disease modeling literature, see Allen (2008) and Blackwood (2018) for an overview.
+
+## Example: Partially Observed Epidemic Count Data
+
+**Deterministic SIR model:**
+\begin{minipage}{0.45\linewidth}
+Incidence paths are solutions to systems of differential equations,
+$$\footnotesize\begin{aligned}
+\frac{\rmd}{\rmd t}\left(\begin{array}{l}
+N_{SI} \\
+N_{IR}
+\end{array}\right) &= \left(\begin{array}{c}
+\beta SI \\
+\mu I
+\end{array}\right), \\ 
+&= \left(\begin{array}{c}
+\beta (S_0 - N_{SI})(I_0 + N_{SI} - N_{IR}) \\
+\mu (I_0 + N_{SI} - N_{IR})
+\end{array}\right),
+\end{aligned}$$
+subject to $\bf{X}_0 = (S_0,I_0,R_0),\ \bf{N}_0 = \bs{0}.$
+
+\begin{itemize}
+\item $\beta$ = per-contact infection rate.
+\item $\mu$ = recovery rate.
+\item Priors on $1/\mu$ = mean infectious period and $\mathcal{R}_0 = \beta N / \mu =$ basic reproduction number. 
+\end{itemize}
+
+\end{minipage}\hfill
+\begin{minipage}{0.45\linewidth}
+```{r sir_diag, out.width = '90%'}
+knitr::include_graphics("sir_diagram.pdf")
+```
+
+```{r sir_odes, out.width = '100%'}
+knitr::include_graphics("sir_ode.pdf")
+```
+\end{minipage}
+
+## Example: Partially Observed Epidemic Count Data
+
+Joint model, $\pi(\bf{Y},\bf{N},\bs{\theta})$, where $\bf{N}$ has the *Markov* property. \vspace{-0.1in}
+
+- Data, $\bf{Y}$, are conditionally independent given $\bf{N}$. 
+- *Simplified complete data likelihood:*\vspace{-0.1in} $$L(\bf{Y},\bf{N} | \bs{\theta}) = \pi(\bf{N}(t_0)|\bs{\theta})\prod_{\ell = 1}^L \textcolor{RoyalBlue}{\pi(Y_\ell|\bf{N}(t_\ell),\bs{\theta})} \textcolor{BrickRed}{\pi(\bf{N}(t_\ell) | \bf{N}(t_{\ell-1}),\bs{\theta})}. \vspace{-0.15in}$$
+		\begin{itemize}
+			\item $\textcolor{RoyalBlue}{\pi(Y_\ell|\bf{N}(t_\ell),\bs{\theta})}$ --- sampling model, negative binomial.
+			\item $\textcolor{BrickRed}{\pi(\bf{N}(t_\ell) | \bf{N}(t_{\ell-1}),\bs{\theta})}$ --- transition density for latent epidemic, SIR
+		\end{itemize}
+- Here, $\bs{\theta}$ maps 1:1 onto $\bf{N}$ so no need to sample $\bf{N}$ explicitly. 
+- Stochastic representations of $\bf{N}$ require sampling latent paths. Tradeoff realism and compuational tractability.
+
+**Key point:** true incidence is missing data. In the Bayesian paradigm we estimate it like any other parameter by including it in our joint model and targeting the posterior!
+
+## Example: Partially Observed Epidemic Count Data
+
+\textbf{Goal:} Infer $\pi(\bs{\theta},\bf{N}|\bf{Y}) \propto  L(\bf{Y}|\bf{N},\bs{\theta})\pi(\bf{N}|\bs{\theta})\pi(\bs{\theta})$.
+
+\begin{itemize}
+\item \textcolor{BrickRed}{\textbf{Outbreak dynamics:}} $\pi(\bf{N}|\bs{\theta})$
+	
+        ```{r sim_dynamics, out.width='90%'}
+        knitr::include_graphics("sim_dynamics_plots.pdf")
+        ```
+\item \textcolor{RoyalBlue}{\textbf{Observation model:}} $L(\bf{Y}|\bf{N},\bs{\theta})$
+    
+        ```{r sampling_mod1, out.width='90%'}
+        knitr::include_graphics("latent_high_low_dist1.pdf")
+        ```
+\end{itemize}
+
+## Example: Partially Observed Epidemic Count Data
+
+\textbf{Goal:} Infer $\pi(\bs{\theta},\bf{N}|\bf{Y}) \propto  L(\bf{Y}|\bf{N},\bs{\theta})\pi(\bf{N}|\bs{\theta})\pi(\bs{\theta})$.
+
+\begin{itemize}
+\item \textcolor{BrickRed}{\textbf{Outbreak dynamics:}} $\pi(\bf{N}|\bs{\theta})$
+	
+        ```{r sim_dynamics2, out.width='90%'}
+        knitr::include_graphics("sim_dynamics_plots.pdf")
+        ```
+\item \textcolor{RoyalBlue}{\textbf{Observation model:}} $L(\bf{Y}|\bf{N},\bs{\theta})$
+    
+        ```{r sampling_mod2, out.width='90%'}
+        knitr::include_graphics("latent_high_low_dist2.pdf")
+        ```
+\end{itemize}
+
+## Example: Partially Observed Epidemic Count Data
+
+\textbf{Goal:} Infer $\pi(\bs{\theta},\bf{N}|\bf{Y}) \propto  L(\bf{Y}|\bf{N},\bs{\theta})\pi(\bf{N}|\bs{\theta})\pi(\bs{\theta})$.
+
+\begin{itemize}
+\item \textcolor{BrickRed}{\textbf{Outbreak dynamics:}} $\pi(\bf{N}|\bs{\theta})$
+	
+        ```{r sim_dynamics3, out.width='90%'}
+        knitr::include_graphics("sim_dynamics_plots.pdf")
+        ```
+\item \textcolor{RoyalBlue}{\textbf{Observation model:}} $L(\bf{Y}|\bf{N},\bs{\theta})$
+    
+        ```{r sampling_mod3, out.width='90%'}
+        knitr::include_graphics("latent_high_low_truth.pdf")
+        ```
+\end{itemize}
+
+## Example: Partially Observed Epidemic Count Data
+
+Posterior distributions of model parameters:
+
+```{r param_posts, out.width='60%'}
+        knitr::include_graphics("sir_posts.pdf")
+```
+        
+## Wrapping up
+
+- Quantify two kinds of uncertainty, epistemic, which reflects subjective ignorance, and aleatory, which is uncertainty due to chance. 
+- A Bayesian model **always** defines a joint distribution for data and parameters. 
+- Some simple examples, PREVAIL II and linear regression; some complex hierarchical models and missing data.
+- Failure modes of misspecified priors under poorly chosen scales, weakly informative priors as a reasonable strategy. 
+- Good workflow is like going to the dentist. 
+- Various computational tools. 
+
+## References
+
+Allen, Linda JS. "An introduction to stochastic epidemic models." Mathematical epidemiology. Springer, Berlin, Heidelberg, 2008. 81-130.
+
+Blackwood, Julie C., and Lauren M. Childs. "An introduction to compartmental modeling for the budding infectious disease modeler." *Letters in Biomathematics* 5.1 (2018): 195-221.
+
+P. Burkner. "Handle Missing Values with brms." \url{https://cran.r-project.org/web/packages/brms/vignettes/brms_missings.html} (2019). 
+
+Gelman, Andrew, et al. Bayesian data analysis. Chapman and Hall/CRC, 2013.
+
+## 
